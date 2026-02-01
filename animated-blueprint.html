@@ -396,12 +396,11 @@
 
         const root={x:byId.center.x, y:byId.center.y};
 
-        /* --- LEFT CHAIN (mirror around root.x) */
+        /* --- LEFT CHAIN (always mirror around root.x so the arc extends leftward) */
         const tgtL={x:byId.start.x,y:byId.start.y};
-        const mirrored=tgtL.x<root.x;
-        const tL=mirrored?{x:2*root.x-tgtL.x,y:tgtL.y}:tgtL;
-        const resL=solveIK(root,tL,preferLeft); preferLeft=resL.preferredSide;
-        const arcL=mirrored?resL.arc.map(p=>({x:2*root.x-p.x,y:p.y})):resL.arc;
+        const tL={x:root.x+Math.abs(tgtL.x-root.x),y:tgtL.y};
+        const resL=solveIK(root,tL,-preferLeft); preferLeft=-resL.preferredSide;
+        const arcL=resL.arc.map(p=>({x:2*root.x-p.x,y:p.y}));
         byId.p3.x=arcL[1].x; byId.p3.y=arcL[1].y;
         byId.p2.x=arcL[2].x; byId.p2.y=arcL[2].y;
         byId.p1.x=arcL[3].x; byId.p1.y=arcL[3].y;
