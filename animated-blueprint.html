@@ -250,7 +250,8 @@
           if(d.type==="center")return"black";
           if(d.type==="endpoint")return d.id==="start"?"green":"red";
           return"blue";
-        });
+        })
+        .style("pointer-events",d=>d.draggable?"auto":"none");
 
       circles.filter(d=>d.draggable).call(d3.drag()
         .on("start",function(ev,d){
