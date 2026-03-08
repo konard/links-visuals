@@ -117,14 +117,14 @@
       const gridGroup = svg.insert("g", ":first-child");
 
       const points = [
-        { id:"start",  xFactor:-4, initialFactor:-4, yFactor:0, type:"endpoint",    draggable:true,  z:1 },
-        { id:"p1",     xFactor:-3, initialFactor:-3, yFactor:0, type:"intermediate",draggable:true,  z:2 },
-        { id:"p2",     xFactor:-2, initialFactor:-2, yFactor:0, type:"intermediate",draggable:true,  z:3 },
-        { id:"p3",     xFactor:-1, initialFactor:-1, yFactor:0, type:"intermediate",draggable:true,  z:4 },
+        { id:"start",  xFactor:-4, initialFactor:-4, yFactor:0, type:"endpoint",    draggable:true,  z:7 },
+        { id:"p1",     xFactor:-3, initialFactor:-3, yFactor:0, type:"intermediate",draggable:true,  z:1 },
+        { id:"p2",     xFactor:-2, initialFactor:-2, yFactor:0, type:"intermediate",draggable:true,  z:2 },
+        { id:"p3",     xFactor:-1, initialFactor:-1, yFactor:0, type:"intermediate",draggable:true,  z:3 },
         { id:"center", xFactor: 0, initialFactor: 0, yFactor:0, type:"center",      draggable:false, z:0 },
-        { id:"p4",     xFactor: 1, initialFactor: 1, yFactor:0, type:"intermediate",draggable:true,  z:5 },
-        { id:"p5",     xFactor: 2, initialFactor: 2, yFactor:0, type:"intermediate",draggable:true,  z:6 },
-        { id:"p6",     xFactor: 3, initialFactor: 3, yFactor:0, type:"intermediate",draggable:true,  z:7 },
+        { id:"p4",     xFactor: 1, initialFactor: 1, yFactor:0, type:"intermediate",draggable:true,  z:4 },
+        { id:"p5",     xFactor: 2, initialFactor: 2, yFactor:0, type:"intermediate",draggable:true,  z:5 },
+        { id:"p6",     xFactor: 3, initialFactor: 3, yFactor:0, type:"intermediate",draggable:true,  z:6 },
         { id:"end",    xFactor: 4, initialFactor: 4, yFactor:0, type:"endpoint",    draggable:true,  z:8 }
       ];
       const byId = Object.fromEntries(points.map(p => [p.id, p]));
@@ -252,6 +252,14 @@
           return"blue";
         })
         .style("pointer-events",d=>d.draggable?"auto":"none");
+
+      // Reorder SVG DOM to achieve correct paint order (bottom→top):
+      // center < intermediates (p1–p6) < start (green) < end (red)
+      // This ensures start (green) is visible above center when snapped to it,
+      // while end (red) remains on top of everything.
+      circles.filter(d=>d.type==="center").lower();  // center to bottom
+      circles.filter(d=>d.id==="start").raise();     // start above center & intermediates
+      circles.filter(d=>d.id==="end").raise();       // end on very top
 
       circles.filter(d=>d.draggable).call(d3.drag()
         .on("start",function(ev,d){
