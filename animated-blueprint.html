@@ -41,9 +41,8 @@
   • Canvas pan: click-and-drag on empty space (not on a control circle) translates
     the canvas.  Touch single-finger drag also pans when not over a control circle.
   • Zoom centre tracks the pointer/pinch-midpoint position.
-  • In SVG mode the transform is applied as an SVG attribute on the scene <g>
-    element (not as a CSS transform on the SVG element), so all rendering stays
-    fully vector — crisp and artifact-free at any zoom level.
+  • Canvas transform is a CSS transform on the SVG element (translateX/Y + scale),
+    keeping all rendering fully vector — crisp and artifact-free at any zoom level.
 
   CONTROL POINTS
   • Nine logical points:  start, p1–p6, center, end.
@@ -65,8 +64,8 @@
       marker-start = small cross-hair,
       marker-end   = double-line arrow-head.
   • Path is rebuilt on every drag or resize.
-  • Markers use markerUnits="userSpaceOnUse" sized to 3 × strokeWidth so they
-    remain proportionate at any viewport size or zoom level.
+  • Markers use viewBox="0 0 100 100" with markerWidth/Height=100 and default
+    markerUnits="strokeWidth" so they scale automatically with the path stroke.
 
   COORDINATE HUD
   • Fixed, semi-transparent navy box shows rounded integer (x, y) coordinates and
@@ -136,10 +135,10 @@
       – js/panels.mjs            — initPanelsToggle()
       – js/sliders.mjs           — initSliders()
       – js/render-mode.mjs       — setRenderMode()
-      – js/svg-setup.mjs         — initSVG(), applyCanvasTransform(), screenToWorld()
-      – js/grid.mjs              — drawGrid() (infinite SVG pattern tile)
+      – js/svg-setup.mjs         — initSVG(), applyCanvasTransform() (CSS), screenToWorld()
+      – js/grid.mjs              — drawGrid() (infinite grid via SVG pattern tiles)
       – js/hud.mjs               — updateHUD()
-      – js/markers.mjs           — initMarkers() (proportionate, userSpaceOnUse)
+      – js/markers.mjs           — initMarkers() (viewBox-based, scales with stroke)
       – js/control-points.mjs    — initControlPoints() (circles + D3 drag)
       – js/geometry.mjs          — vecAdd/Sub/Scale, offsetPoint()
       – js/path.mjs              — updatePath() (Catmull-Rom → cubic Bézier)
@@ -154,11 +153,11 @@
   <style>
     html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
     svg        { display:block; touch-action:none; }
-    canvas#render-canvas { display:none; position:fixed; top:0; left:0; touch-action:none; }
+    canvas#render-canvas { display:none; position:fixed; top:0; left:0; touch-action:none; z-index:1; }
 
     /* ---- coordinates HUD ---- */
     #coordinates{
-      position:fixed; bottom:1vmin; left:1vmin;
+      position:fixed; bottom:1vmin; left:1vmin; z-index:10;
       background:rgba(0,0,128,.5); color:#fff;
       padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
       border-radius:0.4vmin; white-space:pre;
@@ -167,7 +166,7 @@
 
     /* ---- config panel ---- */
     #config-panel{
-      position:fixed; bottom:1vmin; right:1vmin;
+      position:fixed; bottom:1vmin; right:1vmin; z-index:10;
       background:rgba(0,0,128,.5); color:#fff;
       padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
       border-radius:0.4vmin;

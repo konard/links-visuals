@@ -1,15 +1,23 @@
 // drawGrid — infinite background grid using SVG pattern tiles.
-// Uses two <pattern> elements (minor + major) to tile grid lines across a
-// large <rect>.  Panning/zooming moves the pattern naturally; the pattern is
-// rebuilt only on resize.
+//
+// Uses two <pattern> elements (minor + major) that tile across a very large
+// <rect>. The patterns use patternUnits="userSpaceOnUse" so they tile in SVG
+// coordinate space. Combined with the CSS transform on the SVG element for
+// pan/zoom, this gives an effectively infinite grid.
+//
+// The pattern origin is aligned to (cx, cy) so grid lines pass through the
+// viewport center. The large rect ensures grid lines are visible even when
+// the user pans far from the center.
 
 import * as state from './state.mjs';
-import { GRID_EXTENT, MINOR_PATTERN_ID, MAJOR_PATTERN_ID } from './constants.mjs';
+
+const GRID_EXTENT      = 1e6;
+const MINOR_PATTERN_ID = "grid-pattern-minor";
+const MAJOR_PATTERN_ID = "grid-pattern-major";
 
 export function drawGrid() {
   state.gridGroup.selectAll("*").remove();
 
-  // Remove any previously defined grid patterns from <defs>
   const defs = state.svg.select("defs");
   defs.select("#" + MINOR_PATTERN_ID).remove();
   defs.select("#" + MAJOR_PATTERN_ID).remove();

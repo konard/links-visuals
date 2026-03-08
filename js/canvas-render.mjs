@@ -7,47 +7,41 @@ import { strokeFraction } from './constants.mjs';
 import { vecAdd, vecSub, vecScale, offsetPoint } from './geometry.mjs';
 
 // drawCrossMarker — draws the cross-hair tick at the path start on canvas.
-// `x, y`     — attachment point (path start)
-// `angle`    — path tangent angle at start (radians)
-// `markerBox` — marker box size in world units (same as SVG markerWidth)
-// `lineW`    — stroke-width of the marker lines in world units
-function drawCrossMarker(ctx, x, y, angle, markerBox, lineW) {
+// Replicates the SVG marker with viewBox="0 0 100 100", markerWidth=100,
+// markerUnits="strokeWidth": the marker box is 100 × strokeWidth.
+function drawCrossMarker(ctx, x, y, angle, markerBox) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  // Map viewBox (0-100) to marker box (0-markerBox), with refX=50 offset
+  // Map viewBox (0-100) to marker box (0-markerBox), with refX=50, refY=50 offset
   const scale = markerBox / 100;
-  const ox = -50 * scale; // refX=50 → shift so refX maps to origin
-  const oy = -50 * scale; // refY=50 → shift so refY maps to origin
+  const ox = -50 * scale;
+  const oy = -50 * scale;
 
-  const x1 = (62.5 - (12.5 - 12.5/1.618)) * scale + ox;
-  const y1 = (25 + 14.5 - 0.23)            * scale + oy;
-  const y2 = (75 - 14.5 + 0.23)            * scale + oy;
+  const lineX = (62.5 - (12.5 - 12.5/1.618)) * scale + ox;
+  const y1 = (25 + 14.5 - 0.23) * scale + oy;
+  const y2 = (75 - 14.5 + 0.23) * scale + oy;
 
   ctx.strokeStyle = "black";
-  ctx.lineWidth   = lineW;
+  ctx.lineWidth   = 1 * scale; // default SVG stroke-width is 1 in viewBox units
   ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x1, y2);
+  ctx.moveTo(lineX, y1);
+  ctx.lineTo(lineX, y2);
   ctx.stroke();
   ctx.restore();
 }
 
 // drawArrowMarker — draws the double-arm arrowhead at the path end on canvas.
-// `x, y`     — attachment point (path end)
-// `angle`    — path tangent angle at end (radians, pointing in path direction)
-// `markerBox` — marker box size in world units
-// `lineW`    — stroke-width of the marker lines in world units
-function drawArrowMarker(ctx, x, y, angle, markerBox, lineW) {
+function drawArrowMarker(ctx, x, y, angle, markerBox) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
   const scale = markerBox / 100;
-  const ox = -10 * scale; // refX=10 → shift so refX maps to origin
-  const oy = -50 * scale; // refY=50 → shift so refY maps to origin
+  const ox = -10 * scale; // refX=10
+  const oy = -50 * scale; // refY=50
 
   ctx.strokeStyle = "black";
-  ctx.lineWidth   = lineW;
+  ctx.lineWidth   = 1 * scale;
 
   // Upper arm: (10.35, 50.35) → (−0.35, 39.65)
   ctx.beginPath();
@@ -159,20 +153,20 @@ export function drawSceneOnCanvas() {
   }
   ctx.stroke();
 
-  // Draw markers — same proportions as the SVG markers.
-  // markerBox = 6 × strokeWidth (matching markers.mjs sizing).
-  const markerBox = 6 * sw;
-  const lineW     = sw;  // marker line weight = path stroke-width
+  // Draw markers — same proportions as SVG markers.
+  // SVG uses markerUnits="strokeWidth" with markerWidth=100,
+  // so the marker box in pixels = 100 × strokeWidth.
+  const markerBox = 100 * sw;
 
-  // Tangent angle at the path start (from pts[0] toward pts[1])
+  // Tangent angle at the path start
   const t0 = tangents[0];
   const startAngle = Math.atan2(t0.y, t0.x);
-  drawCrossMarker(ctx, pts[0].x, pts[0].y, startAngle, markerBox, lineW);
+  drawCrossMarker(ctx, pts[0].x, pts[0].y, startAngle, markerBox);
 
-  // Tangent angle at the path end (from pts[last-1] toward pts[last])
+  // Tangent angle at the path end
   const tN = tangents[last];
   const endAngle = Math.atan2(tN.y, tN.x);
-  drawArrowMarker(ctx, pts[last].x, pts[last].y, endAngle, markerBox, lineW);
+  drawArrowMarker(ctx, pts[last].x, pts[last].y, endAngle, markerBox);
 
   // Control circles
   state.points.forEach(p => {
