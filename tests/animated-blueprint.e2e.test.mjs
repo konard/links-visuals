@@ -232,6 +232,18 @@ describe(
         });
         assert.ok(hasPatterns, 'Expected at least 2 pattern elements for grid tiling');
       });
+
+      it('SVG has overflow=visible so grid extends beyond SVG viewport during pan/zoom', async () => {
+        if (!commander) return;
+        // The outermost SVG element defaults to overflow:hidden per the SVG spec.
+        // Without overflow:visible the CSS-transform-based pan/zoom clips the grid
+        // to the SVG element's width/height box, making the grid appear finite.
+        const overflow = await page.evaluate(() =>
+          document.querySelector('svg')?.getAttribute('overflow')
+        );
+        assert.strictEqual(overflow, 'visible',
+          'SVG element must have overflow="visible" to allow infinite grid during pan/zoom');
+      });
     });
 
     // -----------------------------------------------------------------------
