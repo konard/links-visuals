@@ -122,6 +122,22 @@
     to import D3 v 7 lazily.
   • No external CSS or assets beyond the loader; everything is inline.
   • Requires a modern browser with ES-modules and fetch support.
+  • JavaScript is split into named functions per concern:
+      – initPanelsToggle()       — show/hide panel button
+      – initSliders()            — config panel sliders
+      – initSVG()                — SVG element + groups setup
+      – drawGrid()               — background grid
+      – updateHUD()              — coordinate HUD
+      – initMarkers()            — SVG defs markers
+      – initControlPoints()      — circles + D3 drag
+      – offsetPoint()            — geometry: offset along segment
+      – updatePath()             — Catmull-Rom → cubic Bézier path
+      – IK math helpers          — buildArcFixed, buildArc, rotateAround,
+                                    clampFirstJoint, bestArc, solveIK
+      – updateIntermediateViaIK() — per-frame IK solve
+      – resize()                 — window resize handler
+      – initCanvasZoomPan()      — mouse/touch zoom & pan
+      – startAnimationLoop()     — requestAnimationFrame loop
 
   --------------------------------------------------------------------------------->
 
@@ -206,17 +222,6 @@
       const d3 = await use('d3');
 
       /* -----------------------------------------------------------------------
-         PANELS TOGGLE
-      ----------------------------------------------------------------------- */
-      const toggleBtn = document.getElementById("toggle-panels");
-      let panelsVisible = true;
-      toggleBtn.addEventListener("click", () => {
-        panelsVisible = !panelsVisible;
-        document.body.classList.toggle("panels-hidden", !panelsVisible);
-        toggleBtn.textContent = panelsVisible ? "☰" : "✕";
-      });
-
-      /* -----------------------------------------------------------------------
          ORIGINAL CONSTANTS / STATE
          Scale-independent fractions of gridSpacing so the layout is consistent
          at any viewport size or browser zoom level.
@@ -240,22 +245,6 @@
       let startOffsetFraction = 0.10;   // default: matches selected values in issue screenshot
       let endOffsetFraction   = 0.16;
 
-      const startOffsetSlider = document.getElementById("startOffsetSlider");
-      const endOffsetSlider   = document.getElementById("endOffsetSlider");
-      const startOffsetVal    = document.getElementById("startOffsetVal");
-      const endOffsetVal      = document.getElementById("endOffsetVal");
-
-      startOffsetSlider.addEventListener("input", () => {
-        startOffsetFraction = +startOffsetSlider.value;
-        startOffsetVal.textContent = startOffsetFraction.toFixed(2);
-        updatePath();
-      });
-      endOffsetSlider.addEventListener("input", () => {
-        endOffsetFraction = +endOffsetSlider.value;
-        endOffsetVal.textContent = endOffsetFraction.toFixed(2);
-        updatePath();
-      });
-
       let width, height, cx, cy, gridSpacing, halfSpacing;
 
       /* -----------------------------------------------------------------------
@@ -268,24 +257,12 @@
       let canvasOffsetX = 0;
       let canvasOffsetY = 0;
 
-      function applyCanvasTransform() {
-        svg.style("transform",
-          `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${canvasScale})`);
-        svg.style("transform-origin", "0 0");
-      }
-
-      // Convert a screen (client) point to SVG-local coordinates,
-      // accounting for the current canvas transform.
-      function screenToSVG(clientX, clientY) {
-        return {
-          x: (clientX - canvasOffsetX) / canvasScale,
-          y: (clientY - canvasOffsetY) / canvasScale
-        };
-      }
-
-      const svgEl = document.createElementNS("http://www.w3.org/2000/svg","svg");
-      const svg   = d3.select("body").append(() => svgEl);
-      const gridGroup = svg.insert("g", ":first-child");
+      /* -----------------------------------------------------------------------
+         SCENE STATE
+         Populated by initSVG() and initControlPoints().
+      ----------------------------------------------------------------------- */
+      let svgEl, svg, gridGroup;
+      let mainPath, circles;
 
       const points = [
         { id:"start",  xFactor:-4, initialFactor:-4, yFactor:0, type:"endpoint",    draggable:true,  z:7 },
@@ -301,8 +278,85 @@
       const byId = Object.fromEntries(points.map(p => [p.id, p]));
 
       /* -----------------------------------------------------------------------
-         GRID (unchanged)
+         IK STATE (mutable, shared across frames)
       ----------------------------------------------------------------------- */
+      let animationEnabled = false;
+      let preferLeft  = 0;
+      let preferRight = 0;
+
+      /* =======================================================================
+         PANELS TOGGLE
+         Manages show/hide of the coordinates HUD and config panel.
+      ======================================================================= */
+      function initPanelsToggle() {
+        const toggleBtn = document.getElementById("toggle-panels");
+        let panelsVisible = true;
+        toggleBtn.addEventListener("click", () => {
+          panelsVisible = !panelsVisible;
+          document.body.classList.toggle("panels-hidden", !panelsVisible);
+          toggleBtn.textContent = panelsVisible ? "☰" : "✕";
+        });
+      }
+
+      /* =======================================================================
+         SLIDERS (config panel)
+         Manages the start/end offset sliders.
+      ======================================================================= */
+      function initSliders() {
+        const startOffsetSlider = document.getElementById("startOffsetSlider");
+        const endOffsetSlider   = document.getElementById("endOffsetSlider");
+        const startOffsetVal    = document.getElementById("startOffsetVal");
+        const endOffsetVal      = document.getElementById("endOffsetVal");
+
+        startOffsetSlider.addEventListener("input", () => {
+          startOffsetFraction = +startOffsetSlider.value;
+          startOffsetVal.textContent = startOffsetFraction.toFixed(2);
+          updatePath();
+        });
+
+        endOffsetSlider.addEventListener("input", () => {
+          endOffsetFraction = +endOffsetSlider.value;
+          endOffsetVal.textContent = endOffsetFraction.toFixed(2);
+          updatePath();
+        });
+      }
+
+      /* =======================================================================
+         SVG SETUP
+         Creates the SVG element and the grid group.
+      ======================================================================= */
+      function initSVG() {
+        svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg   = d3.select("body").append(() => svgEl);
+        gridGroup = svg.insert("g", ":first-child");
+      }
+
+      /* =======================================================================
+         APPLY CANVAS TRANSFORM
+         Updates the SVG element's CSS transform for pan/zoom.
+      ======================================================================= */
+      function applyCanvasTransform() {
+        svg.style("transform",
+          `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${canvasScale})`);
+        svg.style("transform-origin", "0 0");
+      }
+
+      /* =======================================================================
+         SCREEN → SVG COORDINATE CONVERSION
+         Maps a screen (client) point to SVG-local coordinates,
+         accounting for the current canvas CSS transform.
+      ======================================================================= */
+      function screenToSVG(clientX, clientY) {
+        return {
+          x: (clientX - canvasOffsetX) / canvasScale,
+          y: (clientY - canvasOffsetY) / canvasScale
+        };
+      }
+
+      /* =======================================================================
+         BACKGROUND GRID
+         Draws a Cartesian grid over the current viewport dimensions.
+      ======================================================================= */
       function drawGrid() {
         gridGroup.selectAll("*").remove();
 
@@ -343,147 +397,167 @@
                .attr("stroke","white").attr("stroke-width",1).attr("opacity",.8);
       }
 
-      /* -----------------------------------------------------------------------
+      /* =======================================================================
          HUD
-      ----------------------------------------------------------------------- */
-      function fmt(n){const s=Math.round(n).toString();return s.startsWith('-')?'-'+s.slice(1).padStart(3,'0'):s.padStart(4,'0');}
-      function updateHUD(){
-        document.getElementById("coordinates").textContent =
-          points.map(p=>`${p.id.padEnd(6)}: (${fmt(p.x)}, ${fmt(p.y)})  z=${String(p.z).padStart(4,'0')}`).join("\n");
+         Updates the coordinate display panel with current point positions.
+      ======================================================================= */
+      function fmt(n) {
+        const s = Math.round(n).toString();
+        return s.startsWith('-') ? '-' + s.slice(1).padStart(3,'0') : s.padStart(4,'0');
       }
 
-      /* -----------------------------------------------------------------------
-         MARKERS – restored exactly as original
-      ----------------------------------------------------------------------- */
-      const defs = svg.append("defs");
-      defs.append("marker")
-          .attr("id", "cross-marker")
-          .attr("viewBox", "0 0 100 100")
-          .attr("markerWidth", 100)
-          .attr("markerHeight", 100)
-          .attr("refX", 50)
-          .attr("refY", 50)
-          .attr("orient", "auto")
-        .append("g")
-          .call(g => {
-            g.append("line")
-             .attr("x1", 62.5 - (12.5 - 12.5/1.618))
-             .attr("y1", 25 + 14.5 - 0.23)
-             .attr("x2", 62.5 - (12.5 - 12.5/1.618))
-             .attr("y2", 75 - 14.5 + 0.23)
-             .attr("stroke", "black");
-          });
-      defs.append("marker")
-          .attr("id", "arrow-marker")
-          .attr("viewBox", "0 0 100 100")
-          .attr("markerWidth", 100)
-          .attr("markerHeight", 100)
-          .attr("refX", 10)
-          .attr("refY", 50)
-          .attr("orient", "auto")
-        .append("g")
-          .call(g => {
-            g.append("line")
-             .attr("x1", 10 + 0.35)
-             .attr("y1", 50 + 0.35)
-             .attr("x2", 0 - 0.35)
-             .attr("y2", 40 - 0.35)
-             .attr("stroke", "black");
-            g.append("line")
-             .attr("x1", 10 + 0.35)
-             .attr("y1", 50 - 0.35)
-             .attr("x2", 0 - 0.35)
-             .attr("y2", 60 + 0.35)
-             .attr("stroke", "black");
-          });
+      function updateHUD() {
+        document.getElementById("coordinates").textContent =
+          points.map(p =>
+            `${p.id.padEnd(6)}: (${fmt(p.x)}, ${fmt(p.y)})  z=${String(p.z).padStart(4,'0')}`
+          ).join("\n");
+      }
 
-      const mainPath = svg.append("path")
-        .attr("fill","none")
-        .attr("stroke","black")
-        .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
-        .attr("marker-start","url(#cross-marker)")
-        .attr("marker-end","url(#arrow-marker)");
+      /* =======================================================================
+         MARKERS
+         Creates the SVG <defs> markers for the path endpoints.
+      ======================================================================= */
+      function initMarkers() {
+        const defs = svg.append("defs");
 
-      /* -----------------------------------------------------------------------
-         CONTROL CIRCLES & DRAG
-      ----------------------------------------------------------------------- */
-      let animationEnabled = false;
+        defs.append("marker")
+            .attr("id", "cross-marker")
+            .attr("viewBox", "0 0 100 100")
+            .attr("markerWidth", 100)
+            .attr("markerHeight", 100)
+            .attr("refX", 50)
+            .attr("refY", 50)
+            .attr("orient", "auto")
+          .append("g")
+            .call(g => {
+              g.append("line")
+               .attr("x1", 62.5 - (12.5 - 12.5/1.618))
+               .attr("y1", 25 + 14.5 - 0.23)
+               .attr("x2", 62.5 - (12.5 - 12.5/1.618))
+               .attr("y2", 75 - 14.5 + 0.23)
+               .attr("stroke", "black");
+            });
 
-      let circles = svg.selectAll("circle.control")
-        .data(points,d=>d.id)
-        .enter()
-        .append("circle")
-        .attr("class",d=>"control "+d.id)
-        .attr("r",circleRadius)
-        .attr("fill","rgba(0,0,0,0)")
-        .attr("stroke-dasharray","4 2")
-        .attr("stroke",d=>{
-          if(d.type==="center")return"black";
-          if(d.type==="endpoint")return d.id==="start"?"green":"red";
-          return"blue";
-        })
-        .style("pointer-events",d=>d.draggable?"auto":"none");
+        defs.append("marker")
+            .attr("id", "arrow-marker")
+            .attr("viewBox", "0 0 100 100")
+            .attr("markerWidth", 100)
+            .attr("markerHeight", 100)
+            .attr("refX", 10)
+            .attr("refY", 50)
+            .attr("orient", "auto")
+          .append("g")
+            .call(g => {
+              g.append("line")
+               .attr("x1", 10 + 0.35)
+               .attr("y1", 50 + 0.35)
+               .attr("x2", 0 - 0.35)
+               .attr("y2", 40 - 0.35)
+               .attr("stroke", "black");
+              g.append("line")
+               .attr("x1", 10 + 0.35)
+               .attr("y1", 50 - 0.35)
+               .attr("x2", 0 - 0.35)
+               .attr("y2", 60 + 0.35)
+               .attr("stroke", "black");
+            });
+      }
 
-      // Reorder SVG DOM to achieve correct paint order (bottom→top):
-      circles.filter(d=>d.type==="center").lower();
-      circles.filter(d=>d.id==="start").raise();
-      circles.filter(d=>d.id==="end").raise();
+      /* =======================================================================
+         CONTROL POINTS & DRAG
+         Creates the control circles and attaches D3 drag behaviour.
+      ======================================================================= */
+      function initControlPoints() {
+        mainPath = svg.append("path")
+          .attr("fill", "none")
+          .attr("stroke", "black")
+          .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
+          .attr("marker-start", "url(#cross-marker)")
+          .attr("marker-end",   "url(#arrow-marker)");
 
-      // D3 drag that converts screen coords to SVG-local coords via canvasTransform
-      circles.filter(d=>d.draggable).call(d3.drag()
-        .on("start",function(ev,d){
-          d3.select(this).attr("stroke-dasharray",null);
-          if(d.id==="start"||d.id==="end") animationEnabled = true;
-        })
-        .on("drag",function(ev,d){
-          // ev.x/y from D3 drag are already in SVG coordinates when the SVG
-          // element itself has no transform — but we apply a CSS transform to
-          // the SVG element.  We must map from screen to SVG-local manually.
-          // For touch events, clientX/Y lives on changedTouches[0].
-          const src = ev.sourceEvent;
-          const clientX = src.clientX !== undefined ? src.clientX
-                        : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
-          const clientY = src.clientY !== undefined ? src.clientY
-                        : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
-          const svgPt = screenToSVG(clientX, clientY);
-          const nx=cx+Math.round((svgPt.x-cx)/halfSpacing)*halfSpacing,
-                ny=cy+Math.round((svgPt.y-cy)/halfSpacing)*halfSpacing,
-                dist=Math.hypot(svgPt.x-nx,svgPt.y-ny);
-          d.x=dist<snapThreshold?nx:svgPt.x;
-          d.y=dist<snapThreshold?ny:svgPt.y;
-          d3.select(this).attr("cx",d.x).attr("cy",d.y);
-          updatePath();
-        })
-        .on("end",function(ev,d){
-          d.xFactor=(d.x-cx)/gridSpacing;
-          d.yFactor=(d.y-cy)/gridSpacing;
-          d3.select(this).attr("stroke-dasharray","4 2");
-        }));
+        circles = svg.selectAll("circle.control")
+          .data(points, d => d.id)
+          .enter()
+          .append("circle")
+          .attr("class", d => "control " + d.id)
+          .attr("r", circleRadius)
+          .attr("fill", "rgba(0,0,0,0)")
+          .attr("stroke-dasharray", "4 2")
+          .attr("stroke", d => {
+            if (d.type === "center")   return "black";
+            if (d.type === "endpoint") return d.id === "start" ? "green" : "red";
+            return "blue";
+          })
+          .style("pointer-events", d => d.draggable ? "auto" : "none");
 
-      /* -----------------------------------------------------------------------
+        // Reorder SVG DOM for correct paint order (bottom → top):
+        circles.filter(d => d.type === "center").lower();
+        circles.filter(d => d.id === "start").raise();
+        circles.filter(d => d.id === "end").raise();
+
+        // D3 drag — converts screen coords to SVG-local coords via screenToSVG()
+        circles.filter(d => d.draggable).call(d3.drag()
+          .on("start", function(ev, d) {
+            d3.select(this).attr("stroke-dasharray", null);
+            if (d.id === "start" || d.id === "end") animationEnabled = true;
+          })
+          .on("drag", function(ev, d) {
+            // ev.x/y from D3 drag are already in SVG coordinates when the SVG
+            // element itself has no transform — but we apply a CSS transform to
+            // the SVG element.  We must map from screen to SVG-local manually.
+            // For touch events, clientX/Y lives on changedTouches[0].
+            const src = ev.sourceEvent;
+            const clientX = src.clientX !== undefined ? src.clientX
+                          : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
+            const clientY = src.clientY !== undefined ? src.clientY
+                          : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
+            const svgPt = screenToSVG(clientX, clientY);
+            const nx = cx + Math.round((svgPt.x - cx) / halfSpacing) * halfSpacing;
+            const ny = cy + Math.round((svgPt.y - cy) / halfSpacing) * halfSpacing;
+            const dist = Math.hypot(svgPt.x - nx, svgPt.y - ny);
+            d.x = dist < snapThreshold ? nx : svgPt.x;
+            d.y = dist < snapThreshold ? ny : svgPt.y;
+            d3.select(this).attr("cx", d.x).attr("cy", d.y);
+            updatePath();
+          })
+          .on("end", function(ev, d) {
+            d.xFactor = (d.x - cx) / gridSpacing;
+            d.yFactor = (d.y - cy) / gridSpacing;
+            d3.select(this).attr("stroke-dasharray", "4 2");
+          }));
+      }
+
+      /* =======================================================================
          SIMPLE VEC OPS
-      ----------------------------------------------------------------------- */
-      const add=(v,w)=>({x:v.x+w.x,y:v.y+w.y});
-      const sub=(v,w)=>({x:v.x-w.x,y:v.y-w.y});
-      const scale=(v,s)=>({x:v.x*s,y:v.y*s});
+         Minimal 2D vector arithmetic used by the path builder.
+      ======================================================================= */
+      const vecAdd   = (v, w) => ({ x: v.x + w.x, y: v.y + w.y });
+      const vecSub   = (v, w) => ({ x: v.x - w.x, y: v.y - w.y });
+      const vecScale = (v, s) => ({ x: v.x * s,   y: v.y * s   });
 
-      /* -----------------------------------------------------------------------
-         CATMULL-ROM → PATH
-      ----------------------------------------------------------------------- */
-      function offsetPoint(anchor, neighbor, offset){
-        if(offset === 0) return anchor;
+      /* =======================================================================
+         GEOMETRY — OFFSET POINT
+         Moves `anchor` toward `neighbor` by `offset` world units.
+      ======================================================================= */
+      function offsetPoint(anchor, neighbor, offset) {
+        if (offset === 0) return anchor;
         const dx = neighbor.x - anchor.x, dy = neighbor.y - anchor.y;
         const len = Math.hypot(dx, dy);
-        if(len < 1e-6) return anchor;
-        return { x: anchor.x + dx/len*offset, y: anchor.y + dy/len*offset };
+        if (len < 1e-6) return anchor;
+        return { x: anchor.x + dx / len * offset, y: anchor.y + dy / len * offset };
       }
 
-      function updatePath(){
+      /* =======================================================================
+         PATH — CATMULL-ROM → CUBIC BÉZIER
+         Rebuilds the main path from the current point positions.
+         Applies start/end offsets before computing the spline.
+      ======================================================================= */
+      function updatePath() {
         const last = points.length - 1;
         const startOffset = startOffsetFraction * gridSpacing;
         const endOffset   = endOffsetFraction   * gridSpacing;
-        const geomStart = offsetPoint(points[0], points[1],    startOffset);
-        const geomEnd   = offsetPoint(points[last], points[last-1], endOffset);
+        const geomStart = offsetPoint(points[0],    points[1],      startOffset);
+        const geomEnd   = offsetPoint(points[last],  points[last-1], endOffset);
 
         const pts = points.map((p, i) =>
           i === 0    ? { ...p, x: geomStart.x, y: geomStart.y } :
@@ -491,207 +565,223 @@
           p
         );
 
-        const tangents=pts.map((p,i)=>{
-          if(i===0) return sub(pts[1],pts[0]);
-          if(i===pts.length-1) return sub(pts[i],pts[i-1]);
-          return scale(sub(pts[i+1],pts[i-1]),.5);
+        const tangents = pts.map((p, i) => {
+          if (i === 0)            return vecSub(pts[1], pts[0]);
+          if (i === pts.length-1) return vecSub(pts[i], pts[i-1]);
+          return vecScale(vecSub(pts[i+1], pts[i-1]), 0.5);
         });
-        let d=`M ${pts[0].x} ${pts[0].y} `;
-        for(let i=0;i<pts.length-1;i++){
-          const p0=pts[i],p1=pts[i+1];
-          const cp1=add(p0,scale(tangents[i],1/3));
-          const cp2=sub(p1,scale(tangents[i+1],1/3));
-          d+=`C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p1.x} ${p1.y} `;
+
+        let d = `M ${pts[0].x} ${pts[0].y} `;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p0  = pts[i], p1 = pts[i+1];
+          const cp1 = vecAdd(p0, vecScale(tangents[i],   1/3));
+          const cp2 = vecSub(p1, vecScale(tangents[i+1], 1/3));
+          d += `C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p1.x} ${p1.y} `;
         }
-        mainPath.attr("d",d);
+
+        mainPath.attr("d", d);
         updateHUD();
       }
 
       /* =======================================================================
-         CONSTANT-CURVATURE IK  (exact maths from your demo)
+         CONSTANT-CURVATURE IK  — math helpers
+         (exact maths from the stand-alone FABRIK demo)
       ======================================================================= */
-      const SEG_COUNT               = 4;
-      let   SEG_LEN                 = 100;
-      let   MAX_REACH               = SEG_COUNT * SEG_LEN;
-      const FIRST_INIT_ANGLE        = 0;
-      const FIRST_MAX_DELTA         = Math.PI/2;
-      let   SIDE_TOLERANCE          = .1;
-      const SWEEP_STEPS             = 300;
-      function normAngle(a){while(a> Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a;}
+      const SEG_COUNT         = 4;
+      let   SEG_LEN           = 100;
+      let   MAX_REACH         = SEG_COUNT * SEG_LEN;
+      const FIRST_INIT_ANGLE  = 0;
+      const FIRST_MAX_DELTA   = Math.PI / 2;
+      let   SIDE_TOLERANCE    = 0.1;
+      const SWEEP_STEPS       = 300;
 
-      function buildArcFixed(thetaAbs,side,baseAngle,root){
-        const arc=[{...root}], theta=thetaAbs*side;
-        let dir=baseAngle, x=root.x, y=root.y;
-        for(let i=1;i<=SEG_COUNT;i++){
-          x+=SEG_LEN*Math.cos(dir); y+=SEG_LEN*Math.sin(dir);
-          arc[i]={x,y}; dir+=theta;
+      function normAngle(a) {
+        while (a >  Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
+      }
+
+      function buildArcFixed(thetaAbs, side, baseAngle, root) {
+        const arc = [{ ...root }], theta = thetaAbs * side;
+        let dir = baseAngle, x = root.x, y = root.y;
+        for (let i = 1; i <= SEG_COUNT; i++) {
+          x += SEG_LEN * Math.cos(dir);
+          y += SEG_LEN * Math.sin(dir);
+          arc[i] = { x, y };
+          dir += theta;
         }
         return arc;
       }
-      function buildArc(thetaAbs,side,dx,dy,root){
-        const theta=thetaAbs*side;
-        const beta =Math.atan2(dy,dx)-(SEG_COUNT-1)*theta/2;
-        return buildArcFixed(thetaAbs,side,beta,root);
+
+      function buildArc(thetaAbs, side, dx, dy, root) {
+        const theta = thetaAbs * side;
+        const beta  = Math.atan2(dy, dx) - (SEG_COUNT - 1) * theta / 2;
+        return buildArcFixed(thetaAbs, side, beta, root);
       }
-      function rotateAround(pArr,phi,root){
-        const s=Math.sin(phi), c=Math.cos(phi);
-        for(const p of pArr){
-          const dx=p.x-root.x, dy=p.y-root.y;
-          p.x=root.x+dx*c-dy*s; p.y=root.y+dx*s+dy*c;
+
+      function rotateAround(pArr, phi, root) {
+        const s = Math.sin(phi), c = Math.cos(phi);
+        for (const p of pArr) {
+          const dx = p.x - root.x, dy = p.y - root.y;
+          p.x = root.x + dx * c - dy * s;
+          p.y = root.y + dx * s + dy * c;
         }
       }
-      function clampFirstJoint(arc,root,maxDelta=FIRST_MAX_DELTA){
-        const firstDir=Math.atan2(arc[1].y-root.y,arc[1].x-root.x);
-        const delta   =normAngle(firstDir-FIRST_INIT_ANGLE);
-        if(delta> maxDelta) rotateAround(arc, maxDelta-delta,root);
-        if(delta<-maxDelta) rotateAround(arc,-maxDelta-delta,root);
+
+      function clampFirstJoint(arc, root, maxDelta = FIRST_MAX_DELTA) {
+        const firstDir = Math.atan2(arc[1].y - root.y, arc[1].x - root.x);
+        const delta    = normAngle(firstDir - FIRST_INIT_ANGLE);
+        if (delta >  maxDelta) rotateAround(arc,  maxDelta - delta, root);
+        if (delta < -maxDelta) rotateAround(arc, -maxDelta - delta, root);
       }
-      function bestArc(side,baseAngle,root,target){
-        let bestArc=null,best=Infinity;
-        const thetaMax=Math.PI*2/SEG_COUNT-1e-4;
-        for(let i=0;i<=SWEEP_STEPS;i++){
-          const theta=i*thetaMax/SWEEP_STEPS;
-          const arc=buildArcFixed(theta,side,baseAngle,root);
-          const end=arc[SEG_COUNT];
-          const d=Math.hypot(end.x-target.x,end.y-target.y);
-          if(d<best){best=d;bestArc=arc;}
+
+      function bestArc(side, baseAngle, root, target) {
+        let best = Infinity, bestArcResult = null;
+        const thetaMax = Math.PI * 2 / SEG_COUNT - 1e-4;
+        for (let i = 0; i <= SWEEP_STEPS; i++) {
+          const theta = i * thetaMax / SWEEP_STEPS;
+          const arc   = buildArcFixed(theta, side, baseAngle, root);
+          const end   = arc[SEG_COUNT];
+          const d     = Math.hypot(end.x - target.x, end.y - target.y);
+          if (d < best) { best = d; bestArcResult = arc; }
         }
-        clampFirstJoint(bestArc,root);
-        return{arc:bestArc,dist:best};
+        clampFirstJoint(bestArcResult, root);
+        return { arc: bestArcResult, dist: best };
       }
-      let preferLeft=0, preferRight=0;
-      function solveIK(root,target,preferredSide){
-        const dx=target.x-root.x, dy=target.y-root.y, d=Math.hypot(dx,dy);
-        if(preferredSide===0) preferredSide=dy<0?1:-1;
-        const eff=Math.min(d,MAX_REACH);
 
-        let lo=1e-6, hi=Math.PI*2/SEG_COUNT-1e-6;
-        const radius=θ=>Math.sin(SEG_COUNT*θ/2)/Math.sin(θ/2);
-        for(let i=0;i<40;i++){const mid=(lo+hi)/2;
-          (radius(mid)>eff/SEG_LEN)?(lo=mid):(hi=mid);}
-        const thetaAbs=(lo+hi)/2;
+      function solveIK(root, target, preferredSide) {
+        const dx = target.x - root.x, dy = target.y - root.y, d = Math.hypot(dx, dy);
+        if (preferredSide === 0) preferredSide = dy < 0 ? 1 : -1;
+        const eff = Math.min(d, MAX_REACH);
 
-        let up,down;
-        if(d<MAX_REACH*.82-1e-3){
-          up  ={arc:buildArc(thetaAbs, 1,dx,dy,root)};
-          down={arc:buildArc(thetaAbs,-1,dx,dy,root)};
-          clampFirstJoint(up.arc,root,FIRST_MAX_DELTA/2);
-          clampFirstJoint(down.arc,root,FIRST_MAX_DELTA/2);
-          up.dist  =Math.hypot(up.arc[SEG_COUNT].x-target.x,  up.arc[SEG_COUNT].y-target.y);
-          down.dist=Math.hypot(down.arc[SEG_COUNT].x-target.x,down.arc[SEG_COUNT].y-target.y);
-        }else if(d<MAX_REACH-1e-3){
-          up  ={arc:buildArc(thetaAbs, 1,dx,dy,root)};
-          down={arc:buildArc(thetaAbs,-1,dx,dy,root)};
-          clampFirstJoint(up.arc,root); clampFirstJoint(down.arc,root);
-          up.dist  =Math.hypot(up.arc[SEG_COUNT].x-target.x,  up.arc[SEG_COUNT].y-target.y);
-          down.dist=Math.hypot(down.arc[SEG_COUNT].x-target.x,down.arc[SEG_COUNT].y-target.y);
-        }else{
-          const base=Math.max(
-            FIRST_INIT_ANGLE-FIRST_MAX_DELTA,
-            Math.min(FIRST_INIT_ANGLE+FIRST_MAX_DELTA,Math.atan2(dy,dx))
+        let lo = 1e-6, hi = Math.PI * 2 / SEG_COUNT - 1e-6;
+        const radius = θ => Math.sin(SEG_COUNT * θ / 2) / Math.sin(θ / 2);
+        for (let i = 0; i < 40; i++) {
+          const mid = (lo + hi) / 2;
+          (radius(mid) > eff / SEG_LEN) ? (lo = mid) : (hi = mid);
+        }
+        const thetaAbs = (lo + hi) / 2;
+
+        let up, down;
+        if (d < MAX_REACH * 0.82 - 1e-3) {
+          up   = { arc: buildArc(thetaAbs,  1, dx, dy, root) };
+          down = { arc: buildArc(thetaAbs, -1, dx, dy, root) };
+          clampFirstJoint(up.arc,   root, FIRST_MAX_DELTA / 2);
+          clampFirstJoint(down.arc, root, FIRST_MAX_DELTA / 2);
+          up.dist   = Math.hypot(up.arc[SEG_COUNT].x   - target.x, up.arc[SEG_COUNT].y   - target.y);
+          down.dist = Math.hypot(down.arc[SEG_COUNT].x - target.x, down.arc[SEG_COUNT].y - target.y);
+        } else if (d < MAX_REACH - 1e-3) {
+          up   = { arc: buildArc(thetaAbs,  1, dx, dy, root) };
+          down = { arc: buildArc(thetaAbs, -1, dx, dy, root) };
+          clampFirstJoint(up.arc,   root);
+          clampFirstJoint(down.arc, root);
+          up.dist   = Math.hypot(up.arc[SEG_COUNT].x   - target.x, up.arc[SEG_COUNT].y   - target.y);
+          down.dist = Math.hypot(down.arc[SEG_COUNT].x - target.x, down.arc[SEG_COUNT].y - target.y);
+        } else {
+          const base = Math.max(
+            FIRST_INIT_ANGLE - FIRST_MAX_DELTA,
+            Math.min(FIRST_INIT_ANGLE + FIRST_MAX_DELTA, Math.atan2(dy, dx))
           );
-          up  =bestArc( 1,base,root,target);
-          down=bestArc(-1,base,root,target);
+          up   = bestArc( 1, base, root, target);
+          down = bestArc(-1, base, root, target);
         }
-        const cur= preferredSide>0?up:down,
-              oth= preferredSide>0?down:up;
-        if(oth.dist<cur.dist-SIDE_TOLERANCE) preferredSide*=-1;
-        return{arc:(preferredSide>0?up.arc:down.arc),preferredSide};
+
+        const cur = preferredSide > 0 ? up   : down;
+        const oth = preferredSide > 0 ? down : up;
+        if (oth.dist < cur.dist - SIDE_TOLERANCE) preferredSide *= -1;
+        return { arc: (preferredSide > 0 ? up.arc : down.arc), preferredSide };
       }
 
-      function updateIntermediateViaIK(){
-        if(!animationEnabled) return;
+      /* =======================================================================
+         UPDATE INTERMEDIATE POINTS VIA IK
+         Called each animation frame when animationEnabled is true.
+      ======================================================================= */
+      function updateIntermediateViaIK() {
+        if (!animationEnabled) return;
 
-        const root={x:byId.center.x, y:byId.center.y};
+        const root = { x: byId.center.x, y: byId.center.y };
 
-        const tgtL={x:byId.start.x,y:byId.start.y};
-        const tL={x:root.x+Math.abs(tgtL.x-root.x),y:tgtL.y};
-        const resL=solveIK(root,tL,-preferLeft); preferLeft=-resL.preferredSide;
-        const arcL=resL.arc.map(p=>({x:2*root.x-p.x,y:p.y}));
-        byId.p3.x=arcL[1].x; byId.p3.y=arcL[1].y;
-        byId.p2.x=arcL[2].x; byId.p2.y=arcL[2].y;
-        byId.p1.x=arcL[3].x; byId.p1.y=arcL[3].y;
+        // Left half: center → p3 → p2 → p1 → start (mirrored)
+        const tgtL = { x: byId.start.x, y: byId.start.y };
+        const tL   = { x: root.x + Math.abs(tgtL.x - root.x), y: tgtL.y };
+        const resL = solveIK(root, tL, -preferLeft);
+        preferLeft = -resL.preferredSide;
+        const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: p.y }));
+        byId.p3.x = arcL[1].x; byId.p3.y = arcL[1].y;
+        byId.p2.x = arcL[2].x; byId.p2.y = arcL[2].y;
+        byId.p1.x = arcL[3].x; byId.p1.y = arcL[3].y;
 
-        const tgtR={x:byId.end.x,y:byId.end.y};
-        const resR=solveIK(root,tgtR,preferRight); preferRight=resR.preferredSide;
-        const arcR=resR.arc;
-        byId.p4.x=arcR[1].x; byId.p4.y=arcR[1].y;
-        byId.p5.x=arcR[2].x; byId.p5.y=arcR[2].y;
-        byId.p6.x=arcR[3].x; byId.p6.y=arcR[3].y;
+        // Right half: center → p4 → p5 → p6 → end
+        const tgtR = { x: byId.end.x, y: byId.end.y };
+        const resR = solveIK(root, tgtR, preferRight);
+        preferRight = resR.preferredSide;
+        const arcR = resR.arc;
+        byId.p4.x = arcR[1].x; byId.p4.y = arcR[1].y;
+        byId.p5.x = arcR[2].x; byId.p5.y = arcR[2].y;
+        byId.p6.x = arcR[3].x; byId.p6.y = arcR[3].y;
       }
 
-      /* -----------------------------------------------------------------------
+      /* =======================================================================
          RESIZE
-      ----------------------------------------------------------------------- */
-      function resize(){
-        width=innerWidth; height=innerHeight;
-        cx=width/2; cy=height/2;
-        gridSpacing=cx*(1-paddingFraction)/4;
-        halfSpacing=gridSpacing/2;
+         Recomputes all size-dependent values and redraws the scene.
+      ======================================================================= */
+      function resize() {
+        width  = innerWidth;
+        height = innerHeight;
+        cx     = width  / 2;
+        cy     = height / 2;
+        gridSpacing  = cx * (1 - paddingFraction) / 4;
+        halfSpacing  = gridSpacing / 2;
 
-        snapThreshold  = snapFraction    * gridSpacing;
-        circleRadius   = radiusFraction  * gridSpacing;
+        snapThreshold  = snapFraction   * gridSpacing;
+        circleRadius   = radiusFraction * gridSpacing;
         SEG_LEN        = gridSpacing;
         MAX_REACH      = SEG_COUNT * SEG_LEN;
         SIDE_TOLERANCE = sideTolFraction * gridSpacing;
 
-        svg.attr("width",width).attr("height",height);
-        circles.attr("r", circleRadius);
-        mainPath.attr("stroke-width", strokeFraction * gridSpacing);
+        svg.attr("width", width).attr("height", height);
+        if (circles) circles.attr("r", circleRadius);
+        if (mainPath) mainPath.attr("stroke-width", strokeFraction * gridSpacing);
         drawGrid();
 
-        points.forEach(d=>{
-          d.x=cx+d.xFactor*gridSpacing;
-          d.y=cy+d.yFactor*gridSpacing;
+        points.forEach(d => {
+          d.x = cx + d.xFactor * gridSpacing;
+          d.y = cy + d.yFactor * gridSpacing;
         });
 
-        circles.data(points).attr("cx",d=>d.x).attr("cy",d=>d.y);
-        if(animationEnabled) updateIntermediateViaIK();
+        if (circles) circles.data(points).attr("cx", d => d.x).attr("cy", d => d.y);
+        if (animationEnabled) updateIntermediateViaIK();
         updatePath();
       }
-      addEventListener("resize",resize);
-      resize();
 
-      /* -----------------------------------------------------------------------
-         CANVAS ZOOM via scroll wheel
-         Zooms the SVG canvas (geometry + grid) around the pointer position.
-         UI panels are unaffected (they are outside the SVG).
-      ----------------------------------------------------------------------- */
+      /* =======================================================================
+         CANVAS ZOOM / PAN — mouse & touch events
+         Handles scroll-wheel zoom, mouse drag pan, and touch pinch/pan.
+      ======================================================================= */
       const MIN_SCALE = 0.1;
       const MAX_SCALE = 20;
 
-      svgEl.addEventListener("wheel", (e) => {
+      function handleWheel(e) {
         e.preventDefault();
-
-        // Determine zoom factor from wheel delta
-        const delta = e.deltaMode === 1 ? e.deltaY * 24 : e.deltaY; // lines vs pixels
+        const delta  = e.deltaMode === 1 ? e.deltaY * 24 : e.deltaY;
         const factor = Math.pow(0.999, delta);
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, canvasScale * factor));
         if (newScale === canvasScale) return;
 
         // Zoom centred on pointer position (client coords)
-        const pivotX = e.clientX;
-        const pivotY = e.clientY;
-        // Keep the world point under the pointer fixed:
-        // pivotX = canvasOffsetX + pivotSVGx * canvasScale
-        // => pivotSVGx = (pivotX - canvasOffsetX) / canvasScale
-        const pivotSVGx = (pivotX - canvasOffsetX) / canvasScale;
-        const pivotSVGy = (pivotY - canvasOffsetY) / canvasScale;
-        canvasOffsetX = pivotX - pivotSVGx * newScale;
-        canvasOffsetY = pivotY - pivotSVGy * newScale;
+        const pivotSVGx = (e.clientX - canvasOffsetX) / canvasScale;
+        const pivotSVGy = (e.clientY - canvasOffsetY) / canvasScale;
+        canvasOffsetX = e.clientX - pivotSVGx * newScale;
+        canvasOffsetY = e.clientY - pivotSVGy * newScale;
         canvasScale   = newScale;
         applyCanvasTransform();
-      }, { passive: false });
+      }
 
-      /* -----------------------------------------------------------------------
-         CANVAS PAN via mouse drag on empty space
-      ----------------------------------------------------------------------- */
       let isPanning = false;
       let panStartX = 0, panStartY = 0;
       let panOffsetStartX = 0, panOffsetStartY = 0;
 
-      svgEl.addEventListener("mousedown", (e) => {
-        // Only pan if the click is NOT on a draggable control circle
+      function handleMouseDown(e) {
         const onCircle = e.target.tagName === "circle" && e.target.classList.contains("control");
         if (!onCircle) {
           isPanning = true;
@@ -702,88 +792,76 @@
           svgEl.style.cursor = "grabbing";
           e.preventDefault();
         }
-      });
+      }
 
-      window.addEventListener("mousemove", (e) => {
+      function handleMouseMove(e) {
         if (!isPanning) return;
         canvasOffsetX = panOffsetStartX + (e.clientX - panStartX);
         canvasOffsetY = panOffsetStartY + (e.clientY - panStartY);
         applyCanvasTransform();
-      });
+      }
 
-      window.addEventListener("mouseup", () => {
+      function handleMouseUp() {
         if (isPanning) {
           isPanning = false;
           svgEl.style.cursor = "";
         }
-      });
+      }
 
-      /* -----------------------------------------------------------------------
-         CANVAS PINCH-TO-ZOOM & TOUCH PAN (touch devices)
-      ----------------------------------------------------------------------- */
-      let activeTouches = {};
-      let lastPinchDist = null;
-      let lastPinchMidX = null, lastPinchMidY = null;
-      let touchPanStartX = 0, touchPanStartY = 0;
+      // Touch state
+      let activeTouches  = {};
+      let lastPinchDist  = null;
+      let lastPinchMidX  = null, lastPinchMidY = null;
+      let touchPanStartX = 0,   touchPanStartY = 0;
       let touchOffsetStartX = 0, touchOffsetStartY = 0;
       let isTouchPanning = false;
 
       function getTouchOnCircle(touch) {
-        // Returns true if the touch is over a draggable control circle
         const el = document.elementFromPoint(touch.clientX, touch.clientY);
         return el && el.tagName === "circle" && el.classList.contains("control");
       }
 
-      svgEl.addEventListener("touchstart", (e) => {
+      function handleTouchStart(e) {
         e.preventDefault();
         for (const t of e.changedTouches) activeTouches[t.identifier] = t;
-
         const ids = Object.keys(activeTouches);
         if (ids.length === 2) {
-          // Begin pinch
           lastPinchDist = null;
           isTouchPanning = false;
         } else if (ids.length === 1) {
           const t = e.changedTouches[0];
           if (!getTouchOnCircle(t)) {
-            isTouchPanning = true;
-            touchPanStartX = t.clientX;
-            touchPanStartY = t.clientY;
+            isTouchPanning    = true;
+            touchPanStartX    = t.clientX;
+            touchPanStartY    = t.clientY;
             touchOffsetStartX = canvasOffsetX;
             touchOffsetStartY = canvasOffsetY;
           } else {
             isTouchPanning = false;
           }
         }
-      }, { passive: false });
+      }
 
-      svgEl.addEventListener("touchmove", (e) => {
+      function handleTouchMove(e) {
         e.preventDefault();
         for (const t of e.changedTouches) activeTouches[t.identifier] = t;
-
         const ids = Object.keys(activeTouches);
         if (ids.length >= 2) {
-          const t0 = activeTouches[ids[0]];
-          const t1 = activeTouches[ids[1]];
+          const t0   = activeTouches[ids[0]];
+          const t1   = activeTouches[ids[1]];
           const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
           const midX = (t0.clientX + t1.clientX) / 2;
           const midY = (t0.clientY + t1.clientY) / 2;
-
           if (lastPinchDist !== null) {
-            const factor = dist / lastPinchDist;
+            const factor   = dist / lastPinchDist;
             const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, canvasScale * factor));
-
-            // Zoom centred on pinch midpoint
             const pivotSVGx = (midX - canvasOffsetX) / canvasScale;
             const pivotSVGy = (midY - canvasOffsetY) / canvasScale;
-            canvasOffsetX = midX - pivotSVGx * newScale;
-            canvasOffsetY = midY - pivotSVGy * newScale;
-            canvasScale = newScale;
-
-            // Also pan with pinch midpoint movement
+            canvasOffsetX  = midX - pivotSVGx * newScale;
+            canvasOffsetY  = midY - pivotSVGy * newScale;
+            canvasScale    = newScale;
             canvasOffsetX += midX - lastPinchMidX;
             canvasOffsetY += midY - lastPinchMidY;
-
             applyCanvasTransform();
           }
           lastPinchDist = dist;
@@ -795,36 +873,60 @@
           canvasOffsetY = touchOffsetStartY + (t.clientY - touchPanStartY);
           applyCanvasTransform();
         }
-      }, { passive: false });
+      }
 
-      svgEl.addEventListener("touchend", (e) => {
+      function handleTouchEnd(e) {
         for (const t of e.changedTouches) delete activeTouches[t.identifier];
         const ids = Object.keys(activeTouches);
-        if (ids.length < 2) {
-          lastPinchDist = null;
-        }
-        if (ids.length === 0) {
-          isTouchPanning = false;
-        }
-      }, { passive: false });
+        if (ids.length < 2)  lastPinchDist  = null;
+        if (ids.length === 0) isTouchPanning = false;
+      }
 
-      svgEl.addEventListener("touchcancel", (e) => {
+      function handleTouchCancel(e) {
         for (const t of e.changedTouches) delete activeTouches[t.identifier];
-        lastPinchDist = null;
+        lastPinchDist  = null;
         isTouchPanning = false;
-      }, { passive: false });
+      }
 
-      /* -----------------------------------------------------------------------
-         MAIN LOOP (60 fps when animation enabled)
-      ----------------------------------------------------------------------- */
-      (function loop(){
-        updateIntermediateViaIK();
-        if(animationEnabled){
-          circles.data(points).attr("cx",d=>d.x).attr("cy",d=>d.y);
-          updatePath();
-        }
-        requestAnimationFrame(loop);
-      })();
+      function initCanvasZoomPan() {
+        svgEl.addEventListener("wheel",       handleWheel,      { passive: false });
+        svgEl.addEventListener("mousedown",   handleMouseDown);
+        window.addEventListener("mousemove",  handleMouseMove);
+        window.addEventListener("mouseup",    handleMouseUp);
+        svgEl.addEventListener("touchstart",  handleTouchStart, { passive: false });
+        svgEl.addEventListener("touchmove",   handleTouchMove,  { passive: false });
+        svgEl.addEventListener("touchend",    handleTouchEnd,   { passive: false });
+        svgEl.addEventListener("touchcancel", handleTouchCancel,{ passive: false });
+      }
+
+      /* =======================================================================
+         ANIMATION LOOP — 60 fps
+         Runs continuously; only updates SVG circles/path when animationEnabled.
+      ======================================================================= */
+      function startAnimationLoop() {
+        (function loop() {
+          updateIntermediateViaIK();
+          if (animationEnabled) {
+            if (circles) circles.data(points).attr("cx", d => d.x).attr("cy", d => d.y);
+            updatePath();
+          }
+          requestAnimationFrame(loop);
+        })();
+      }
+
+      /* =======================================================================
+         INITIALISATION SEQUENCE
+      ======================================================================= */
+      initPanelsToggle();
+      initSliders();
+      initSVG();
+      initMarkers();
+      initControlPoints();
+      initCanvasZoomPan();
+      addEventListener("resize", resize);
+      resize();
+      startAnimationLoop();
+
     })();
   </script>
 </body>
