@@ -17,6 +17,13 @@ export function initSVG() {
   const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   const svg = _d3.select("body").append(() => svgEl);
 
+  // overflow:visible allows the grid pattern rect (which extends ±1e6 in SVG
+  // user space) to paint beyond the SVG element's width/height boundary.
+  // Without this, the outermost SVG element defaults to overflow:hidden (per
+  // SVG spec §14.3.3), which clips the grid to the SVG viewport before the
+  // CSS pan/zoom transform is applied — making the grid appear finite.
+  svg.attr("overflow", "visible");
+
   // defs for markers
   svg.append("defs");
 
