@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Marker Test</title></head>
+<body style="margin:0; background:#E0F7FA;">
+<svg id="s" width="800" height="600" style="display:block;">
+  <defs>
+    <!-- Original marker definition from animated-blueprint.html -->
+    <marker id="cross-marker"
+            viewBox="0 0 100 100"
+            markerWidth="100"
+            markerHeight="100"
+            refX="50" refY="50" orient="auto">
+      <g>
+        <line x1="55.27" y1="39.27" x2="55.27" y2="60.73" stroke="black"/>
+      </g>
+    </marker>
+    <marker id="arrow-marker"
+            viewBox="0 0 100 100"
+            markerWidth="100"
+            markerHeight="100"
+            refX="10" refY="50" orient="auto">
+      <g>
+        <line x1="10.35" y1="50.35" x2="-0.35" y2="39.65" stroke="black"/>
+        <line x1="10.35" y1="49.65" x2="-0.35" y2="60.35" stroke="black"/>
+      </g>
+    </marker>
+    <!-- Fixed marker definition with markerUnits=userSpaceOnUse -->
+    <marker id="cross-fixed"
+            viewBox="0 0 100 100"
+            markerWidth="100"
+            markerHeight="100"
+            refX="50" refY="50" orient="auto"
+            markerUnits="userSpaceOnUse">
+      <g>
+        <line x1="55.27" y1="39.27" x2="55.27" y2="60.73" stroke="red" stroke-width="2"/>
+      </g>
+    </marker>
+    <marker id="arrow-fixed"
+            viewBox="0 0 100 100"
+            markerWidth="100"
+            markerHeight="100"
+            refX="10" refY="50" orient="auto"
+            markerUnits="userSpaceOnUse">
+      <g>
+        <line x1="10.35" y1="50.35" x2="-0.35" y2="39.65" stroke="red" stroke-width="2"/>
+        <line x1="10.35" y1="49.65" x2="-0.35" y2="60.35" stroke="red" stroke-width="2"/>
+      </g>
+    </marker>
+  </defs>
+  <!-- This path uses strokeWidth-based markers (broken) -->
+  <g transform="translate(0,0) scale(1)">
+    <path d="M 100 300 L 700 300" 
+          stroke="black" stroke-width="16" fill="none"
+          marker-start="url(#cross-marker)"
+          marker-end="url(#arrow-marker)"/>
+  </g>
+  <!-- This path uses userSpaceOnUse markers (correct) -->
+  <path d="M 100 500 L 700 500" 
+        stroke="black" stroke-width="16" fill="none"
+        marker-start="url(#cross-fixed)"
+        marker-end="url(#arrow-fixed)"/>
+  <text x="10" y="280" font-size="12">strokeWidth-based markers (markerWidth=100): markers are 1600px wide</text>
+  <text x="10" y="480" font-size="12">userSpaceOnUse markers (markerWidth=100): markers are 100px wide</text>
+</svg>
+</body>
+</html>
