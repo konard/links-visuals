@@ -18,11 +18,15 @@
   • Fills the entire viewport; no scroll-bars.
   • Pastel-blue background #E0F7FA.
   • Everything lives inside one full-window <svg> element.
+  • Fully responsive: supports any screen size, orientation, and browser zoom level.
 
   GRID
   • Cartesian grid centred at window centre (cx, cy).
-    – Major lines every 1 gridSpacing, minor every 0.5 gridSpacing.  
-    – gridSpacing := (cx − 155 px) ÷ 4 (re-computed on resize).  
+    – Major lines every 1 gridSpacing, minor every 0.5 gridSpacing.
+    – gridSpacing := cx × (1 − paddingFraction) ÷ 4  (re-computed on resize).
+      paddingFraction = 0.215, making gridSpacing ≈ 19.6 % of half-viewport width.
+    – All geometry (circle radii, stroke widths, IK segment lengths, snap
+      threshold, offset amounts) scales proportionally with gridSpacing.
     – Major: 1 px stroke @ 80 % α; minor: 0.5 px stroke @ 50 % α.
   • Redrawn on every resize to keep pixels crisp.
 
@@ -35,15 +39,15 @@
   • Each stores grid-relative (xFactor, yFactor) so positions survive resizing.
   • While dragging, the circle’s dashed outline disappears; it returns on drag-end.
   • Drag snaps to the nearest half-grid (0.5 × gridSpacing) if cursor is within
-    20 px of that snap point (“snapThreshold”).
+    snapFraction × gridSpacing of that snap point ("snapThreshold").
 
   SELF-REFERENCING LINK
   • Because start and end are independent anchors, they can be dragged onto the
     same grid coordinate, producing a self-loop; the spline updates smoothly.
 
   PATH
-  • 12 px black stroke with
-      marker-start = small cross-hair,  
+  • strokeFraction × gridSpacing black stroke (≈ 8.5 % of gridSpacing) with
+      marker-start = small cross-hair,
       marker-end   = double-line arrow-head.
   • Path is rebuilt on every drag or resize.
 
@@ -57,6 +61,9 @@
       so the link visually detaches from the start anchor when snapped to center.
     – "End offset"   shifts the path's geometric end   along the chain toward p6,
       so the link visually detaches from the end anchor when snapped to center.
+  • Offsets are stored as grid units (u) — fractions of gridSpacing — so they
+    scale proportionally at any viewport size or zoom level.  Default: 0.14 u
+    (start) and 0.22 u (end), matching the values selected in the issue screenshot.
   • Offset is applied only to the rendered path; the actual anchor coordinates
     (used by the IK solver) are unchanged.
 
@@ -98,28 +105,28 @@
     html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
     svg        { display:block; }
     #coordinates{
-      position:fixed; bottom:10px; left:10px;
+      position:fixed; bottom:1vmin; left:1vmin;
       background:rgba(0,0,128,.5); color:#fff;
-      padding:10px; font:12px/1.3 "Consolas","Courier New",monospace;
-      border-radius:5px; white-space:pre;
+      padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin; white-space:pre;
     }
     #config-panel{
-      position:fixed; bottom:10px; right:10px;
+      position:fixed; bottom:1vmin; right:1vmin;
       background:rgba(0,0,128,.5); color:#fff;
-      padding:10px; font:12px/1.3 "Consolas","Courier New",monospace;
-      border-radius:5px;
+      padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin;
     }
-    #config-panel label{ display:block; margin-bottom:4px; }
-    #config-panel input[type=range]{ width:140px; vertical-align:middle; }
-    #config-panel .val{ display:inline-block; width:28px; text-align:right; }
+    #config-panel label{ display:block; margin-bottom:0.3vmin; }
+    #config-panel input[type=range]{ width:12vw; min-width:80px; vertical-align:middle; }
+    #config-panel .val{ display:inline-block; width:3vw; min-width:28px; text-align:right; }
   </style>
 </head>
 <body>
   <div id="coordinates"></div>
 
   <div id="config-panel">
-    <label>Start offset: <input type="range" id="startOffsetSlider" min="0" max="200" value="0" step="1"> <span class="val" id="startOffsetVal">0</span> px</label>
-    <label>End offset: &nbsp; <input type="range" id="endOffsetSlider"   min="0" max="200" value="0" step="1"> <span class="val" id="endOffsetVal">0</span> px</label>
+    <label>Start offset: <input type="range" id="startOffsetSlider" min="0" max="2" value="0.14" step="0.01"> <span class="val" id="startOffsetVal">0.14</span> u</label>
+    <label>End offset: &nbsp; <input type="range" id="endOffsetSlider"   min="0" max="2" value="0.22" step="0.01"> <span class="val" id="endOffsetVal">0.22</span> u</label>
   </div>
 
   <script type="module">
@@ -129,16 +136,27 @@
 
       /* -----------------------------------------------------------------------
          ORIGINAL CONSTANTS / STATE
+         Scale-independent fractions of gridSpacing so the layout is consistent
+         at any viewport size or browser zoom level.
       ----------------------------------------------------------------------- */
-      const basePadding   = 155;
-      const snapThreshold = 20;
-      const circleRadius  = 24;
+      const paddingFraction   = 0.215;  // side padding as fraction of half-viewport width
+      const snapFraction      = 0.142;  // snap threshold as fraction of gridSpacing
+      const radiusFraction    = 0.170;  // control circle radius as fraction of gridSpacing
+      const strokeFraction    = 0.085;  // path stroke-width as fraction of gridSpacing
+      const sideTolFraction   = 0.001;  // IK side-memory tolerance as fraction of gridSpacing
+
+      // These are updated on every resize() call:
+      let snapThreshold = 20;
+      let circleRadius  = 24;
 
       /* -----------------------------------------------------------------------
          LINK GEOMETRY OFFSET (config panel)
+         Offsets are stored as fractions of gridSpacing (grid units, "u") so
+         they scale proportionally with the grid at any window size or zoom level.
+         The actual pixel displacement is: offsetFraction * gridSpacing.
       ----------------------------------------------------------------------- */
-      let startOffset = 0;
-      let endOffset   = 0;
+      let startOffsetFraction = 0.14;   // default: matches selected values in issue screenshot
+      let endOffsetFraction   = 0.22;
 
       const startOffsetSlider = document.getElementById("startOffsetSlider");
       const endOffsetSlider   = document.getElementById("endOffsetSlider");
@@ -146,13 +164,13 @@
       const endOffsetVal      = document.getElementById("endOffsetVal");
 
       startOffsetSlider.addEventListener("input", () => {
-        startOffset = +startOffsetSlider.value;
-        startOffsetVal.textContent = startOffset;
+        startOffsetFraction = +startOffsetSlider.value;
+        startOffsetVal.textContent = startOffsetFraction.toFixed(2);
         updatePath();
       });
       endOffsetSlider.addEventListener("input", () => {
-        endOffset = +endOffsetSlider.value;
-        endOffsetVal.textContent = endOffset;
+        endOffsetFraction = +endOffsetSlider.value;
+        endOffsetVal.textContent = endOffsetFraction.toFixed(2);
         updatePath();
       });
 
@@ -274,7 +292,7 @@
       const mainPath = svg.append("path")
         .attr("fill","none")
         .attr("stroke","black")
-        .attr("stroke-width",12)
+        .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
         .attr("marker-start","url(#cross-marker)")
         .attr("marker-end","url(#arrow-marker)");
 
@@ -346,6 +364,9 @@
 
       function updatePath(){
         const last = points.length - 1;
+        // Convert grid-unit fractions to pixel offsets (scales with gridSpacing)
+        const startOffset = startOffsetFraction * gridSpacing;
+        const endOffset   = endOffsetFraction   * gridSpacing;
         // Apply geometry offsets: shift the path's start/end along the chain
         const geomStart = offsetPoint(points[0], points[1],    startOffset);
         const geomEnd   = offsetPoint(points[last], points[last-1], endOffset);
@@ -377,11 +398,12 @@
          CONSTANT-CURVATURE IK  (exact maths from your demo)
       ======================================================================= */
       const SEG_COUNT               = 4;
-      const SEG_LEN                 = 165;
-      const MAX_REACH               = SEG_COUNT * SEG_LEN;
+      // SEG_LEN, MAX_REACH, and SIDE_TOLERANCE are pixel-valued and updated in resize():
+      let   SEG_LEN                 = 100;   // placeholder; set to gridSpacing in resize()
+      let   MAX_REACH               = SEG_COUNT * SEG_LEN;
       const FIRST_INIT_ANGLE        = 0;
       const FIRST_MAX_DELTA         = Math.PI/2;
-      const SIDE_TOLERANCE          = .1;
+      let   SIDE_TOLERANCE          = .1;    // placeholder; scaled in resize()
       const SWEEP_STEPS             = 300;
       function normAngle(a){while(a> Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a;}
 
@@ -494,10 +516,22 @@
       function resize(){
         width=innerWidth; height=innerHeight;
         cx=width/2; cy=height/2;
-        gridSpacing=(cx-basePadding)/4;
+        // gridSpacing scales proportionally with viewport so all geometry stays
+        // consistent regardless of window size or browser zoom level.
+        gridSpacing=cx*(1-paddingFraction)/4;
         halfSpacing=gridSpacing/2;
 
+        // Update all scale-dependent values derived from gridSpacing:
+        snapThreshold  = snapFraction    * gridSpacing;
+        circleRadius   = radiusFraction  * gridSpacing;
+        SEG_LEN        = gridSpacing;   // each IK segment spans exactly one grid unit
+        MAX_REACH      = SEG_COUNT * SEG_LEN;
+        SIDE_TOLERANCE = sideTolFraction * gridSpacing;
+
         svg.attr("width",width).attr("height",height);
+        // Update circle radii and path stroke-width to match new scale:
+        circles.attr("r", circleRadius);
+        mainPath.attr("stroke-width", strokeFraction * gridSpacing);
         drawGrid();
 
         points.forEach(d=>{
