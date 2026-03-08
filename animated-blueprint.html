@@ -29,17 +29,21 @@
     – All geometry (circle radii, stroke widths, IK segment lengths, snap
       threshold, offset amounts) scales proportionally with gridSpacing.
     – Major: 1 px stroke @ 80 % α; minor: 0.5 px stroke @ 50 % α.
-  • Redrawn on every resize to keep pixels crisp.
+  • Grid is infinite in all directions (no bounds), extending beyond the viewport.
+  • Implemented via an SVG <pattern> tile so the number of DOM nodes is constant
+    regardless of viewport size or zoom level.
 
   CANVAS ZOOM & PAN
   • Browser zoom does NOT affect the canvas geometry; only UI control panels
     change size with browser zoom (they use viewport-relative units).
   • Canvas zoom: scroll wheel (mouse) or pinch gesture (trackpad / touch screen)
-    scales only the SVG canvas (geometry + grid).  UI panels are unaffected.
+    scales only the canvas (geometry + grid).  UI panels are unaffected.
   • Canvas pan: click-and-drag on empty space (not on a control circle) translates
     the canvas.  Touch single-finger drag also pans when not over a control circle.
   • Zoom centre tracks the pointer/pinch-midpoint position.
-  • Canvas transform is a CSS transform on the SVG element (translateX/Y + scale).
+  • In SVG mode the transform is applied as an SVG attribute on the scene <g>
+    element (not as a CSS transform on the SVG element), so all rendering stays
+    fully vector — crisp and artifact-free at any zoom level.
 
   CONTROL POINTS
   • Nine logical points:  start, p1–p6, center, end.
@@ -69,9 +73,10 @@
   • On mobile (< 600 px wide): positioned top, full width.
 
   CONFIG PANEL
-  • Fixed, semi-transparent navy box contains two range sliders:
+  • Fixed, semi-transparent navy box contains:
     – "Start offset" shifts the path's geometric start along the chain toward p1.
     – "End offset"   shifts the path's geometric end   along the chain toward p6.
+    – "Render mode" toggle: SVG (vector, crisp at any zoom) or Canvas (raster).
   • Offsets are stored as grid units (u) — fractions of gridSpacing — so they
     scale proportionally at any viewport size or zoom level.  Default: 0.10 u
     (start) and 0.16 u (end), matching the values selected in the issue screenshot.
@@ -83,8 +88,8 @@
   SHOW/HIDE PANELS BUTTON
   • A toggle button (☰ / ✕) is always visible; clicking it shows or hides both
     the coordinates HUD and the config panel.
-  • On desktop: button appears at bottom-right corner.
-  • On mobile: button appears at bottom-right corner above config panel.
+  • On desktop: button appears at top-right corner.
+  • On mobile: button appears at top-right corner.
 
   RESPONSIVE LAYOUT
   • Desktop (≥ 600 px wide): panels at corners, sliders sized for mouse.
@@ -124,19 +129,26 @@
   • Requires a modern browser with ES-modules and fetch support.
   • JavaScript is split into named functions per concern:
       – initPanelsToggle()       — show/hide panel button
-      – initSliders()            — config panel sliders
-      – initSVG()                — SVG element + groups setup
-      – drawGrid()               — background grid
+      – initSliders()            — config panel sliders & render mode
+      – setRenderMode()          — switch between SVG and Canvas rendering
+      – initSVG()                — SVG element + scene/grid/geometry groups
+      – applyCanvasTransform()   — update scene transform (SVG attr or canvas ctx)
+      – screenToWorld()          — screen → world coordinate conversion
+      – drawGrid()               — infinite background grid (SVG pattern tile)
       – updateHUD()              — coordinate HUD
       – initMarkers()            — SVG defs markers
       – initControlPoints()      — circles + D3 drag
       – offsetPoint()            — geometry: offset along segment
-      – updatePath()             — Catmull-Rom → cubic Bézier path
+      – updatePath()             — Catmull-Rom → cubic Bézier path (SVG mode)
       – IK math helpers          — buildArcFixed, buildArc, rotateAround,
                                     clampFirstJoint, bestArc, solveIK
       – updateIntermediateViaIK() — per-frame IK solve
       – resize()                 — window resize handler
-      – initCanvasZoomPan()      — mouse/touch zoom & pan
+      – zoom/pan handlers        — handleWheel, handleMouseDown/Move/Up,
+                                    handleTouchStart/Move/End/Cancel
+      – initCanvasZoomPan()      — attach zoom & pan events to SVG element
+      – initCanvasElementEvents()— attach zoom & pan events to <canvas> element
+      – drawSceneOnCanvas()      — canvas-mode renderer (raster fallback)
       – startAnimationLoop()     — requestAnimationFrame loop
 
   --------------------------------------------------------------------------------->
@@ -144,6 +156,7 @@
   <style>
     html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
     svg        { display:block; touch-action:none; }
+    canvas#render-canvas { display:none; position:fixed; top:0; left:0; touch-action:none; }
 
     /* ---- coordinates HUD ---- */
     #coordinates{
@@ -165,6 +178,18 @@
     #config-panel label{ display:block; margin-bottom:0.3vmin; }
     #config-panel input[type=range]{ width:12vw; min-width:80px; vertical-align:middle; }
     #config-panel .val{ display:inline-block; width:3vw; min-width:28px; text-align:right; }
+    #config-panel .render-mode-row {
+      display:flex; align-items:center; gap:0.5vmin; margin-bottom:0.3vmin;
+    }
+    #config-panel .render-mode-row button {
+      background:rgba(255,255,255,0.15); color:#fff;
+      border:1px solid rgba(255,255,255,0.4); border-radius:0.3vmin;
+      padding:0.2vmin 0.6vmin; font-size:inherit; cursor:pointer;
+    }
+    #config-panel .render-mode-row button.active {
+      background:rgba(255,255,255,0.4); font-weight:bold;
+    }
+    #config-panel .render-mode-row button:hover { background:rgba(255,255,255,0.3); }
 
     /* ---- toggle button ---- */
     #toggle-panels{
@@ -212,9 +237,16 @@
   <div id="config-panel">
     <label>Start offset: <input type="range" id="startOffsetSlider" min="0" max="2" value="0.10" step="0.01"> <span class="val" id="startOffsetVal">0.10</span> u</label>
     <label>End offset: &nbsp; <input type="range" id="endOffsetSlider"   min="0" max="2" value="0.16" step="0.01"> <span class="val" id="endOffsetVal">0.16</span> u</label>
+    <div class="render-mode-row">
+      Render:
+      <button id="renderSVGBtn" class="active" title="SVG vector rendering — crisp at any zoom">SVG</button>
+      <button id="renderCanvasBtn" title="Canvas raster rendering">Canvas</button>
+    </div>
   </div>
 
   <button id="toggle-panels" title="Show/hide panels">☰</button>
+
+  <canvas id="render-canvas"></canvas>
 
   <script type="module">
     const { use } = await import("https://esm.sh/use-m");
@@ -245,13 +277,21 @@
       let startOffsetFraction = 0.10;   // default: matches selected values in issue screenshot
       let endOffsetFraction   = 0.16;
 
+      /* -----------------------------------------------------------------------
+         RENDER MODE STATE
+         'svg'    — geometry lives in SVG, scene transform is an SVG attribute.
+                    All rendering stays fully vector — crisp at any zoom level.
+         'canvas' — geometry is drawn on a <canvas> element each frame (raster).
+      ----------------------------------------------------------------------- */
+      let renderMode = 'svg';
+
       let width, height, cx, cy, gridSpacing, halfSpacing;
 
       /* -----------------------------------------------------------------------
          CANVAS ZOOM / PAN STATE
-         canvasScale and canvasOffsetX/Y track the current transform applied to
-         the SVG element so that browser zoom only affects UI panels while the
-         canvas geometry and grid scale independently via these values.
+         canvasScale and canvasOffsetX/Y track the current world transform.
+         In SVG mode this is applied as an SVG attribute transform on sceneGroup.
+         In canvas mode it is applied via ctx.translate/scale each frame.
       ----------------------------------------------------------------------- */
       let canvasScale   = 1;
       let canvasOffsetX = 0;
@@ -261,7 +301,7 @@
          SCENE STATE
          Populated by initSVG() and initControlPoints().
       ----------------------------------------------------------------------- */
-      let svgEl, svg, gridGroup;
+      let svgEl, svg, sceneGroup, gridGroup, geometryGroup;
       let mainPath, circles;
 
       const points = [
@@ -300,13 +340,15 @@
 
       /* =======================================================================
          SLIDERS (config panel)
-         Manages the start/end offset sliders.
+         Manages the start/end offset sliders and the render mode buttons.
       ======================================================================= */
       function initSliders() {
         const startOffsetSlider = document.getElementById("startOffsetSlider");
         const endOffsetSlider   = document.getElementById("endOffsetSlider");
         const startOffsetVal    = document.getElementById("startOffsetVal");
         const endOffsetVal      = document.getElementById("endOffsetVal");
+        const renderSVGBtn      = document.getElementById("renderSVGBtn");
+        const renderCanvasBtn   = document.getElementById("renderCanvasBtn");
 
         startOffsetSlider.addEventListener("input", () => {
           startOffsetFraction = +startOffsetSlider.value;
@@ -319,34 +361,71 @@
           endOffsetVal.textContent = endOffsetFraction.toFixed(2);
           updatePath();
         });
+
+        renderSVGBtn.addEventListener("click",    () => setRenderMode('svg'));
+        renderCanvasBtn.addEventListener("click", () => setRenderMode('canvas'));
+      }
+
+      /* =======================================================================
+         RENDER MODE SWITCH
+         Switches between SVG vector and Canvas raster rendering.
+         In SVG mode: the SVG element is visible; geometry is maintained as SVG.
+         In Canvas mode: the <canvas> is visible; geometry is drawn each frame.
+      ======================================================================= */
+      function setRenderMode(mode) {
+        renderMode = mode;
+        const renderSVGBtn    = document.getElementById("renderSVGBtn");
+        const renderCanvasBtn = document.getElementById("renderCanvasBtn");
+        const canvasEl        = document.getElementById("render-canvas");
+
+        if (mode === 'svg') {
+          svgEl.style.display   = 'block';
+          canvasEl.style.display = 'none';
+          renderSVGBtn.classList.add('active');
+          renderCanvasBtn.classList.remove('active');
+        } else {
+          svgEl.style.display   = 'none';
+          canvasEl.style.display = 'block';
+          renderSVGBtn.classList.remove('active');
+          renderCanvasBtn.classList.add('active');
+          initCanvasElementEvents(canvasEl);
+        }
       }
 
       /* =======================================================================
          SVG SETUP
-         Creates the SVG element and the grid group.
+         Creates the SVG element, scene group, grid group, geometry group.
+         sceneGroup receives the world transform so all content inside is
+         transformed as SVG — fully vector, no CSS rasterisation.
       ======================================================================= */
       function initSVG() {
         svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg   = d3.select("body").append(() => svgEl);
-        gridGroup = svg.insert("g", ":first-child");
+
+        // sceneGroup: all visible geometry lives here.
+        // The world pan/zoom transform is applied as an SVG attribute so the
+        // browser renders everything as crisp vectors at any zoom level.
+        sceneGroup    = svg.append("g").attr("class", "scene");
+        gridGroup     = sceneGroup.append("g").attr("class", "grid");
+        geometryGroup = sceneGroup.append("g").attr("class", "geometry");
       }
 
       /* =======================================================================
-         APPLY CANVAS TRANSFORM
-         Updates the SVG element's CSS transform for pan/zoom.
+         APPLY CANVAS TRANSFORM (SVG mode)
+         Updates the scene group's SVG transform attribute.
+         Using an SVG attribute (not CSS transform) keeps all geometry vector.
       ======================================================================= */
       function applyCanvasTransform() {
-        svg.style("transform",
-          `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${canvasScale})`);
-        svg.style("transform-origin", "0 0");
+        sceneGroup.attr("transform",
+          `translate(${canvasOffsetX},${canvasOffsetY}) scale(${canvasScale})`);
       }
 
       /* =======================================================================
-         SCREEN → SVG COORDINATE CONVERSION
-         Maps a screen (client) point to SVG-local coordinates,
-         accounting for the current canvas CSS transform.
+         SCREEN → WORLD COORDINATE CONVERSION
+         Maps a screen (client) point to world coordinates,
+         accounting for the current canvas transform.
       ======================================================================= */
-      function screenToSVG(clientX, clientY) {
+      function screenToWorld(clientX, clientY) {
         return {
           x: (clientX - canvasOffsetX) / canvasScale,
           y: (clientY - canvasOffsetY) / canvasScale
@@ -354,47 +433,70 @@
       }
 
       /* =======================================================================
-         BACKGROUND GRID
-         Draws a Cartesian grid over the current viewport dimensions.
+         INFINITE BACKGROUND GRID — SVG pattern-based
+         Uses two SVG <pattern> elements to tile the minor and major grid lines
+         infinitely across a large <rect>.  Because the <rect> is inside the
+         sceneGroup (which has the world transform), panning and zooming cause
+         the pattern to move and scale naturally — no DOM nodes are added or
+         removed on pan/zoom.  The pattern is rebuilt on resize only.
       ======================================================================= */
+      const GRID_EXTENT      = 1e6;   // half-size of the backing rect (world units)
+      const MINOR_PATTERN_ID = "grid-pattern-minor";
+      const MAJOR_PATTERN_ID = "grid-pattern-major";
+
       function drawGrid() {
         gridGroup.selectAll("*").remove();
 
-        const minor = gridGroup.append("g");
-        const startXmin = cx + Math.floor((0 - cx) / halfSpacing) * halfSpacing,
-              endXmin   = cx + Math.ceil ((width - cx) / halfSpacing) * halfSpacing;
-        for (let x = startXmin; x <= endXmin; x += halfSpacing)
-          if (Math.abs((x - cx) % gridSpacing) > .1)
-            minor.append("line")
-                 .attr("x1",x).attr("y1",0)
-                 .attr("x2",x).attr("y2",height)
-                 .attr("stroke","white").attr("stroke-width",.5).attr("opacity",.5);
+        // Remove any previously defined grid patterns from <defs>
+        const defs = svg.select("defs");
+        defs.select("#" + MINOR_PATTERN_ID).remove();
+        defs.select("#" + MAJOR_PATTERN_ID).remove();
 
-        const startYmin = cy + Math.floor((0 - cy) / halfSpacing) * halfSpacing,
-              endYmin   = cy + Math.ceil ((height - cy) / halfSpacing) * halfSpacing;
-        for (let y = startYmin; y <= endYmin; y += halfSpacing)
-          if (Math.abs((y - cy) % gridSpacing) > .1)
-            minor.append("line")
-                 .attr("x1",0).attr("y1",y)
-                 .attr("x2",width).attr("y2",y)
-                 .attr("stroke","white").attr("stroke-width",.5).attr("opacity",.5);
+        // Minor-grid pattern: halfSpacing × halfSpacing tile.
+        // One right edge and one bottom edge line so adjacent tiles form a grid.
+        // x/y offset aligns the tiling so lines pass through cx, cy.
+        const minorPat = defs.append("pattern")
+          .attr("id", MINOR_PATTERN_ID)
+          .attr("x", ((cx % halfSpacing) + halfSpacing) % halfSpacing)
+          .attr("y", ((cy % halfSpacing) + halfSpacing) % halfSpacing)
+          .attr("width",  halfSpacing)
+          .attr("height", halfSpacing)
+          .attr("patternUnits", "userSpaceOnUse");
+        minorPat.append("line")
+          .attr("x1", halfSpacing).attr("y1", 0)
+          .attr("x2", halfSpacing).attr("y2", halfSpacing)
+          .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
+        minorPat.append("line")
+          .attr("x1", 0).attr("y1", halfSpacing)
+          .attr("x2", halfSpacing).attr("y2", halfSpacing)
+          .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
 
-        const major = gridGroup.append("g");
-        const startXmaj = cx + Math.floor((0 - cx) / gridSpacing) * gridSpacing,
-              endXmaj   = cx + Math.ceil ((width - cx) / gridSpacing) * gridSpacing;
-        for (let x = startXmaj; x <= endXmaj; x += gridSpacing)
-          major.append("line")
-               .attr("x1",x).attr("y1",0)
-               .attr("x2",x).attr("y2",height)
-               .attr("stroke","white").attr("stroke-width",1).attr("opacity",.8);
+        // Major-grid pattern: gridSpacing × gridSpacing tile.
+        const majorPat = defs.append("pattern")
+          .attr("id", MAJOR_PATTERN_ID)
+          .attr("x", ((cx % gridSpacing) + gridSpacing) % gridSpacing)
+          .attr("y", ((cy % gridSpacing) + gridSpacing) % gridSpacing)
+          .attr("width",  gridSpacing)
+          .attr("height", gridSpacing)
+          .attr("patternUnits", "userSpaceOnUse");
+        majorPat.append("line")
+          .attr("x1", gridSpacing).attr("y1", 0)
+          .attr("x2", gridSpacing).attr("y2", gridSpacing)
+          .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);
+        majorPat.append("line")
+          .attr("x1", 0).attr("y1", gridSpacing)
+          .attr("x2", gridSpacing).attr("y2", gridSpacing)
+          .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);
 
-        const startYmaj = cy + Math.floor((0 - cy) / gridSpacing) * gridSpacing,
-              endYmaj   = cy + Math.ceil ((height - cy) / gridSpacing) * gridSpacing;
-        for (let y = startYmaj; y <= endYmaj; y += gridSpacing)
-          major.append("line")
-               .attr("x1",0).attr("y1",y)
-               .attr("x2",width).attr("y2",y)
-               .attr("stroke","white").attr("stroke-width",1).attr("opacity",.8);
+        // Two large rects filled with the tiling patterns
+        gridGroup.append("rect")
+          .attr("x", -GRID_EXTENT).attr("y", -GRID_EXTENT)
+          .attr("width", 2 * GRID_EXTENT).attr("height", 2 * GRID_EXTENT)
+          .attr("fill", `url(#${MINOR_PATTERN_ID})`);
+        gridGroup.append("rect")
+          .attr("x", -GRID_EXTENT).attr("y", -GRID_EXTENT)
+          .attr("width", 2 * GRID_EXTENT).attr("height", 2 * GRID_EXTENT)
+          .attr("fill", `url(#${MAJOR_PATTERN_ID})`);
       }
 
       /* =======================================================================
@@ -466,16 +568,18 @@
       /* =======================================================================
          CONTROL POINTS & DRAG
          Creates the control circles and attaches D3 drag behaviour.
+         Circles live in geometryGroup so they are transformed with the world
+         pan/zoom and stay fully vector.
       ======================================================================= */
       function initControlPoints() {
-        mainPath = svg.append("path")
+        mainPath = geometryGroup.append("path")
           .attr("fill", "none")
           .attr("stroke", "black")
           .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
           .attr("marker-start", "url(#cross-marker)")
           .attr("marker-end",   "url(#arrow-marker)");
 
-        circles = svg.selectAll("circle.control")
+        circles = geometryGroup.selectAll("circle.control")
           .data(points, d => d.id)
           .enter()
           .append("circle")
@@ -495,28 +599,25 @@
         circles.filter(d => d.id === "start").raise();
         circles.filter(d => d.id === "end").raise();
 
-        // D3 drag — converts screen coords to SVG-local coords via screenToSVG()
+        // D3 drag — converts screen coords to world coords via screenToWorld()
         circles.filter(d => d.draggable).call(d3.drag()
           .on("start", function(ev, d) {
             d3.select(this).attr("stroke-dasharray", null);
             if (d.id === "start" || d.id === "end") animationEnabled = true;
           })
           .on("drag", function(ev, d) {
-            // ev.x/y from D3 drag are already in SVG coordinates when the SVG
-            // element itself has no transform — but we apply a CSS transform to
-            // the SVG element.  We must map from screen to SVG-local manually.
             // For touch events, clientX/Y lives on changedTouches[0].
             const src = ev.sourceEvent;
             const clientX = src.clientX !== undefined ? src.clientX
                           : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
             const clientY = src.clientY !== undefined ? src.clientY
                           : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
-            const svgPt = screenToSVG(clientX, clientY);
-            const nx = cx + Math.round((svgPt.x - cx) / halfSpacing) * halfSpacing;
-            const ny = cy + Math.round((svgPt.y - cy) / halfSpacing) * halfSpacing;
-            const dist = Math.hypot(svgPt.x - nx, svgPt.y - ny);
-            d.x = dist < snapThreshold ? nx : svgPt.x;
-            d.y = dist < snapThreshold ? ny : svgPt.y;
+            const wpt  = screenToWorld(clientX, clientY);
+            const nx   = cx + Math.round((wpt.x - cx) / halfSpacing) * halfSpacing;
+            const ny   = cy + Math.round((wpt.y - cy) / halfSpacing) * halfSpacing;
+            const dist = Math.hypot(wpt.x - nx, wpt.y - ny);
+            d.x = dist < snapThreshold ? nx : wpt.x;
+            d.y = dist < snapThreshold ? ny : wpt.y;
             d3.select(this).attr("cx", d.x).attr("cy", d.y);
             updatePath();
           })
@@ -548,16 +649,16 @@
       }
 
       /* =======================================================================
-         PATH — CATMULL-ROM → CUBIC BÉZIER
-         Rebuilds the main path from the current point positions.
+         PATH — CATMULL-ROM → CUBIC BÉZIER  (SVG mode)
+         Rebuilds the SVG main path from the current point positions.
          Applies start/end offsets before computing the spline.
       ======================================================================= */
       function updatePath() {
         const last = points.length - 1;
         const startOffset = startOffsetFraction * gridSpacing;
         const endOffset   = endOffsetFraction   * gridSpacing;
-        const geomStart = offsetPoint(points[0],    points[1],      startOffset);
-        const geomEnd   = offsetPoint(points[last],  points[last-1], endOffset);
+        const geomStart   = offsetPoint(points[0],    points[1],      startOffset);
+        const geomEnd     = offsetPoint(points[last],  points[last-1], endOffset);
 
         const pts = points.map((p, i) =>
           i === 0    ? { ...p, x: geomStart.x, y: geomStart.y } :
@@ -740,8 +841,15 @@
         SIDE_TOLERANCE = sideTolFraction * gridSpacing;
 
         svg.attr("width", width).attr("height", height);
-        if (circles) circles.attr("r", circleRadius);
+
+        // Keep <canvas> sized to match
+        const canvasEl    = document.getElementById("render-canvas");
+        canvasEl.width    = width;
+        canvasEl.height   = height;
+
+        if (circles)  circles.attr("r", circleRadius);
         if (mainPath) mainPath.attr("stroke-width", strokeFraction * gridSpacing);
+
         drawGrid();
 
         points.forEach(d => {
@@ -755,24 +863,24 @@
       }
 
       /* =======================================================================
-         CANVAS ZOOM / PAN — mouse & touch events
-         Handles scroll-wheel zoom, mouse drag pan, and touch pinch/pan.
+         ZOOM / PAN EVENT HANDLERS
+         Shared logic for both SVG mode and Canvas mode.
       ======================================================================= */
       const MIN_SCALE = 0.1;
       const MAX_SCALE = 20;
 
       function handleWheel(e) {
         e.preventDefault();
-        const delta  = e.deltaMode === 1 ? e.deltaY * 24 : e.deltaY;
-        const factor = Math.pow(0.999, delta);
+        const delta    = e.deltaMode === 1 ? e.deltaY * 24 : e.deltaY;
+        const factor   = Math.pow(0.999, delta);
         const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, canvasScale * factor));
         if (newScale === canvasScale) return;
 
-        // Zoom centred on pointer position (client coords)
-        const pivotSVGx = (e.clientX - canvasOffsetX) / canvasScale;
-        const pivotSVGy = (e.clientY - canvasOffsetY) / canvasScale;
-        canvasOffsetX = e.clientX - pivotSVGx * newScale;
-        canvasOffsetY = e.clientY - pivotSVGy * newScale;
+        // Zoom centred on pointer position
+        const pivotX = (e.clientX - canvasOffsetX) / canvasScale;
+        const pivotY = (e.clientY - canvasOffsetY) / canvasScale;
+        canvasOffsetX = e.clientX - pivotX * newScale;
+        canvasOffsetY = e.clientY - pivotY * newScale;
         canvasScale   = newScale;
         applyCanvasTransform();
       }
@@ -789,7 +897,7 @@
           panStartY = e.clientY;
           panOffsetStartX = canvasOffsetX;
           panOffsetStartY = canvasOffsetY;
-          svgEl.style.cursor = "grabbing";
+          e.currentTarget.style.cursor = "grabbing";
           e.preventDefault();
         }
       }
@@ -804,17 +912,17 @@
       function handleMouseUp() {
         if (isPanning) {
           isPanning = false;
-          svgEl.style.cursor = "";
+          if (svgEl) svgEl.style.cursor = "";
         }
       }
 
       // Touch state
-      let activeTouches  = {};
-      let lastPinchDist  = null;
-      let lastPinchMidX  = null, lastPinchMidY = null;
-      let touchPanStartX = 0,   touchPanStartY = 0;
-      let touchOffsetStartX = 0, touchOffsetStartY = 0;
-      let isTouchPanning = false;
+      let activeTouches     = {};
+      let lastPinchDist     = null;
+      let lastPinchMidX     = null, lastPinchMidY = null;
+      let touchPanStartX    = 0,    touchPanStartY = 0;
+      let touchOffsetStartX = 0,    touchOffsetStartY = 0;
+      let isTouchPanning    = false;
 
       function getTouchOnCircle(touch) {
         const el = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -826,7 +934,7 @@
         for (const t of e.changedTouches) activeTouches[t.identifier] = t;
         const ids = Object.keys(activeTouches);
         if (ids.length === 2) {
-          lastPinchDist = null;
+          lastPinchDist  = null;
           isTouchPanning = false;
         } else if (ids.length === 1) {
           const t = e.changedTouches[0];
@@ -855,10 +963,10 @@
           if (lastPinchDist !== null) {
             const factor   = dist / lastPinchDist;
             const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, canvasScale * factor));
-            const pivotSVGx = (midX - canvasOffsetX) / canvasScale;
-            const pivotSVGy = (midY - canvasOffsetY) / canvasScale;
-            canvasOffsetX  = midX - pivotSVGx * newScale;
-            canvasOffsetY  = midY - pivotSVGy * newScale;
+            const pivotX   = (midX - canvasOffsetX) / canvasScale;
+            const pivotY   = (midY - canvasOffsetY) / canvasScale;
+            canvasOffsetX  = midX - pivotX * newScale;
+            canvasOffsetY  = midY - pivotY * newScale;
             canvasScale    = newScale;
             canvasOffsetX += midX - lastPinchMidX;
             canvasOffsetY += midY - lastPinchMidY;
@@ -878,7 +986,7 @@
       function handleTouchEnd(e) {
         for (const t of e.changedTouches) delete activeTouches[t.identifier];
         const ids = Object.keys(activeTouches);
-        if (ids.length < 2)  lastPinchDist  = null;
+        if (ids.length < 2)   lastPinchDist  = null;
         if (ids.length === 0) isTouchPanning = false;
       }
 
@@ -888,6 +996,9 @@
         isTouchPanning = false;
       }
 
+      /* =======================================================================
+         ATTACH ZOOM/PAN EVENTS — SVG element (default)
+      ======================================================================= */
       function initCanvasZoomPan() {
         svgEl.addEventListener("wheel",       handleWheel,      { passive: false });
         svgEl.addEventListener("mousedown",   handleMouseDown);
@@ -900,8 +1011,145 @@
       }
 
       /* =======================================================================
+         ATTACH ZOOM/PAN EVENTS — <canvas> element (canvas render mode)
+         Called once when the user first switches to canvas mode.
+      ======================================================================= */
+      let canvasEventsAttached = false;
+      function initCanvasElementEvents(canvasEl) {
+        if (canvasEventsAttached) return;
+        canvasEventsAttached = true;
+        canvasEl.addEventListener("wheel",       handleWheel,      { passive: false });
+        canvasEl.addEventListener("mousedown",   handleMouseDown);
+        canvasEl.addEventListener("touchstart",  handleTouchStart, { passive: false });
+        canvasEl.addEventListener("touchmove",   handleTouchMove,  { passive: false });
+        canvasEl.addEventListener("touchend",    handleTouchEnd,   { passive: false });
+        canvasEl.addEventListener("touchcancel", handleTouchCancel,{ passive: false });
+      }
+
+      /* =======================================================================
+         CANVAS RENDER MODE — draw scene on <canvas> each frame
+         Raster fallback when the user selects "Canvas" mode.
+         Computes and draws only the grid lines visible in the current viewport,
+         making it efficient at any zoom level.
+      ======================================================================= */
+      function drawSceneOnCanvas() {
+        const canvasEl = document.getElementById("render-canvas");
+        const ctx      = canvasEl.getContext("2d");
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Background fill
+        ctx.fillStyle = "#E0F7FA";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.save();
+        ctx.translate(canvasOffsetX, canvasOffsetY);
+        ctx.scale(canvasScale, canvasScale);
+
+        // Compute world-space bounds of the visible viewport
+        const worldLeft   = (0      - canvasOffsetX) / canvasScale;
+        const worldRight  = (width  - canvasOffsetX) / canvasScale;
+        const worldTop    = (0      - canvasOffsetY) / canvasScale;
+        const worldBottom = (height - canvasOffsetY) / canvasScale;
+
+        // Minor grid — draw only visible lines
+        const firstMinorX = cx + Math.floor((worldLeft  - cx) / halfSpacing) * halfSpacing;
+        const firstMinorY = cy + Math.floor((worldTop    - cy) / halfSpacing) * halfSpacing;
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth   = 0.5 / canvasScale;
+
+        for (let x = firstMinorX; x <= worldRight + halfSpacing; x += halfSpacing) {
+          if (Math.abs(((x - cx) % gridSpacing + gridSpacing) % gridSpacing) > 0.1 &&
+              Math.abs(((x - cx) % gridSpacing + gridSpacing) % gridSpacing - gridSpacing) > 0.1) {
+            ctx.beginPath();
+            ctx.moveTo(x, worldTop    - halfSpacing);
+            ctx.lineTo(x, worldBottom + halfSpacing);
+            ctx.stroke();
+          }
+        }
+        for (let y = firstMinorY; y <= worldBottom + halfSpacing; y += halfSpacing) {
+          if (Math.abs(((y - cy) % gridSpacing + gridSpacing) % gridSpacing) > 0.1 &&
+              Math.abs(((y - cy) % gridSpacing + gridSpacing) % gridSpacing - gridSpacing) > 0.1) {
+            ctx.beginPath();
+            ctx.moveTo(worldLeft  - halfSpacing, y);
+            ctx.lineTo(worldRight + halfSpacing, y);
+            ctx.stroke();
+          }
+        }
+
+        // Major grid
+        const firstMajorX = cx + Math.floor((worldLeft - cx) / gridSpacing) * gridSpacing;
+        const firstMajorY = cy + Math.floor((worldTop  - cy) / gridSpacing) * gridSpacing;
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth   = 1 / canvasScale;
+
+        for (let x = firstMajorX; x <= worldRight + gridSpacing; x += gridSpacing) {
+          ctx.beginPath();
+          ctx.moveTo(x, worldTop    - gridSpacing);
+          ctx.lineTo(x, worldBottom + gridSpacing);
+          ctx.stroke();
+        }
+        for (let y = firstMajorY; y <= worldBottom + gridSpacing; y += gridSpacing) {
+          ctx.beginPath();
+          ctx.moveTo(worldLeft  - gridSpacing, y);
+          ctx.lineTo(worldRight + gridSpacing, y);
+          ctx.stroke();
+        }
+
+        // Spline path
+        const last        = points.length - 1;
+        const startOffset = startOffsetFraction * gridSpacing;
+        const endOffset   = endOffsetFraction   * gridSpacing;
+        const geomStart   = offsetPoint(points[0],   points[1],      startOffset);
+        const geomEnd     = offsetPoint(points[last], points[last-1], endOffset);
+        const pts = points.map((p, i) =>
+          i === 0    ? { ...p, x: geomStart.x, y: geomStart.y } :
+          i === last ? { ...p, x: geomEnd.x,   y: geomEnd.y   } :
+          p
+        );
+        const tangents = pts.map((p, i) => {
+          if (i === 0)            return vecSub(pts[1], pts[0]);
+          if (i === pts.length-1) return vecSub(pts[i], pts[i-1]);
+          return vecScale(vecSub(pts[i+1], pts[i-1]), 0.5);
+        });
+
+        ctx.strokeStyle = "black";
+        ctx.lineWidth   = strokeFraction * gridSpacing;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p0  = pts[i], p1 = pts[i+1];
+          const cp1 = vecAdd(p0, vecScale(tangents[i],   1/3));
+          const cp2 = vecSub(p1, vecScale(tangents[i+1], 1/3));
+          ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p1.x, p1.y);
+        }
+        ctx.stroke();
+
+        // Control circles
+        points.forEach(p => {
+          const strokeColor =
+            p.type === "center"   ? "black"  :
+            p.type === "endpoint" ? (p.id === "start" ? "green" : "red") :
+            "blue";
+          ctx.save();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth   = 1.5 / canvasScale;
+          ctx.setLineDash([4 / canvasScale, 2 / canvasScale]);
+          ctx.fillStyle = "rgba(0,0,0,0)";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, circleRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+
+        ctx.restore();
+      }
+
+      /* =======================================================================
          ANIMATION LOOP — 60 fps
-         Runs continuously; only updates SVG circles/path when animationEnabled.
+         Runs continuously; updates circles/path when animation is enabled.
+         Triggers canvas redraw each frame when in canvas render mode.
       ======================================================================= */
       function startAnimationLoop() {
         (function loop() {
@@ -909,6 +1157,9 @@
           if (animationEnabled) {
             if (circles) circles.data(points).attr("cx", d => d.x).attr("cy", d => d.y);
             updatePath();
+          }
+          if (renderMode === 'canvas') {
+            drawSceneOnCanvas();
           }
           requestAnimationFrame(loop);
         })();
