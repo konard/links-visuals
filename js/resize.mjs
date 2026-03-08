@@ -19,7 +19,7 @@ export function resize() {
   state.setSnapThreshold(snapFraction   * state.gridSpacing);
   state.setCircleRadius(radiusFraction * state.gridSpacing);
   state.setSegLen(state.gridSpacing);
-  state.setMaxReach(IK_SEG_COUNT * state.gridSpacing);  // SEG_COUNT * SEG_LEN
+  state.setMaxReach(IK_SEG_COUNT * state.gridSpacing);
   state.setSideTolerance(sideTolFraction * state.gridSpacing);
 
   state.svg.attr("width", state.width).attr("height", state.height);
@@ -32,7 +32,6 @@ export function resize() {
   if (state.circles)  state.circles.attr("r", state.circleRadius);
   if (state.mainPath) state.mainPath.attr("stroke-width", strokeFraction * state.gridSpacing);
 
-  // Rebuild grid and markers with new gridSpacing
   drawGrid();
   initMarkers();
 

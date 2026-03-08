@@ -31,9 +31,7 @@ export let endOffsetFraction   = 0.16;
 // ---- SVG scene objects ----
 export let svgEl         = null;
 export let svg           = null;
-export let sceneGroup    = null;
 export let gridGroup     = null;
-export let geometryGroup = null;
 export let mainPath      = null;
 export let circles       = null;
 
@@ -97,9 +95,7 @@ export function setStartOffsetFraction(v){ startOffsetFraction = v; }
 export function setEndOffsetFraction(v)  { endOffsetFraction = v; }
 export function setSvgEl(v)        { svgEl = v; }
 export function setSvg(v)          { svg = v; }
-export function setSceneGroup(v)   { sceneGroup = v; }
 export function setGridGroup(v)    { gridGroup = v; }
-export function setGeometryGroup(v){ geometryGroup = v; }
 export function setMainPath(v)     { mainPath = v; }
 export function setCircles(v)      { circles = v; }
 export function setAnimationEnabled(v){ animationEnabled = v; }

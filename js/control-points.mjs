@@ -1,4 +1,7 @@
 // initControlPoints — creates control circles and attaches D3 drag behaviour.
+// Appends the main path and circles directly to the SVG (not a sub-group),
+// matching the reference implementation where everything is a direct child
+// of the SVG element.
 
 import * as state from './state.mjs';
 import { screenToWorld } from './svg-setup.mjs';
@@ -11,7 +14,7 @@ export function setD3(d3) { _d3 = d3; }
 
 export function initControlPoints() {
   state.setMainPath(
-    state.geometryGroup.append("path")
+    state.svg.append("path")
       .attr("fill", "none")
       .attr("stroke", "black")
       .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
@@ -20,7 +23,7 @@ export function initControlPoints() {
   );
 
   state.setCircles(
-    state.geometryGroup.selectAll("circle.control")
+    state.svg.selectAll("circle.control")
       .data(state.points, d => d.id)
       .enter()
       .append("circle")
@@ -41,7 +44,7 @@ export function initControlPoints() {
   state.circles.filter(d => d.id === "start").raise();
   state.circles.filter(d => d.id === "end").raise();
 
-  // D3 drag — converts screen coords to world coords via screenToWorld()
+  // D3 drag — converts screen coords to SVG-local coords via screenToWorld()
   state.circles.filter(d => d.draggable).call(_d3.drag()
     .on("start", function(ev, d) {
       _d3.select(this).attr("stroke-dasharray", null);

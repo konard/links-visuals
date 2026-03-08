@@ -99,7 +99,7 @@ describe(
     });
 
     // -----------------------------------------------------------------------
-    // Markers (fix verification: markers should not dominate the viewport)
+    // Markers — must match reference (viewBox-based, default strokeWidth units)
     // -----------------------------------------------------------------------
     describe('Markers', () => {
       it('cross-marker definition exists in <defs>', async () => {
@@ -118,35 +118,35 @@ describe(
         assert.ok(exists, 'Expected #arrow-marker in SVG defs');
       });
 
-      it('markers use markerUnits="userSpaceOnUse" (not stroke-width)', async () => {
+      it('markers use default markerUnits (strokeWidth)', async () => {
         if (!commander) return;
         const { cross, arrow } = await page.evaluate(() => ({
           cross: document.querySelector('#cross-marker')?.getAttribute('markerUnits'),
           arrow: document.querySelector('#arrow-marker')?.getAttribute('markerUnits'),
         }));
-        assert.strictEqual(cross, 'userSpaceOnUse',
-          'cross-marker should use markerUnits="userSpaceOnUse"');
-        assert.strictEqual(arrow, 'userSpaceOnUse',
-          'arrow-marker should use markerUnits="userSpaceOnUse"');
+        // Default markerUnits is "strokeWidth" — getAttribute returns null when not set
+        assert.strictEqual(cross, null,
+          'cross-marker should use default markerUnits (strokeWidth)');
+        assert.strictEqual(arrow, null,
+          'arrow-marker should use default markerUnits (strokeWidth)');
       });
 
-      it('markers are proportionate: markerWidth <= 5 × gridSpacing', async () => {
+      it('markers have viewBox="0 0 100 100" and markerWidth=100', async () => {
         if (!commander) return;
-        const { markerWidth, gridSpacing } = await page.evaluate(() => {
-          const marker = document.querySelector('#cross-marker');
-          const mw = parseFloat(marker?.getAttribute('markerWidth') || '0');
-          // Approximate gridSpacing from control circle positions
-          const start = document.querySelector('circle.start');
-          const p1    = document.querySelector('circle.p1');
-          const gs = start && p1
-            ? Math.abs(parseFloat(start.getAttribute('cx')) - parseFloat(p1.getAttribute('cx')))
-            : 0;
-          return { markerWidth: mw, gridSpacing: gs };
+        const info = await page.evaluate(() => {
+          const cross = document.querySelector('#cross-marker');
+          const arrow = document.querySelector('#arrow-marker');
+          return {
+            crossViewBox: cross?.getAttribute('viewBox'),
+            arrowViewBox: arrow?.getAttribute('viewBox'),
+            crossWidth:   cross?.getAttribute('markerWidth'),
+            arrowWidth:   arrow?.getAttribute('markerWidth'),
+          };
         });
-        assert.ok(
-          markerWidth <= 5 * gridSpacing,
-          `markerWidth (${markerWidth}) should be ≤ 5 × gridSpacing (${gridSpacing})`
-        );
+        assert.strictEqual(info.crossViewBox, '0 0 100 100');
+        assert.strictEqual(info.arrowViewBox, '0 0 100 100');
+        assert.strictEqual(info.crossWidth, '100');
+        assert.strictEqual(info.arrowWidth, '100');
       });
     });
 
@@ -166,7 +166,9 @@ describe(
         if (!commander) return;
         const visible = await page.evaluate(() => {
           const el = document.getElementById('config-panel');
-          return el !== null && el.offsetParent !== null;
+          if (!el) return false;
+          const s = window.getComputedStyle(el);
+          return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
         });
         assert.ok(visible, 'Config panel should be visible');
       });
@@ -202,19 +204,33 @@ describe(
         // Switch back
         await page.click('#renderSVGBtn');
       });
+
+      it('config panel remains visible in canvas mode', async () => {
+        if (!commander) return;
+        await page.click('#renderCanvasBtn');
+        const style = await page.evaluate(() => {
+          const el = document.getElementById('config-panel');
+          const s  = window.getComputedStyle(el);
+          return { display: s.display, opacity: s.opacity };
+        });
+        assert.strictEqual(style.display, 'block', 'Config panel display should be block');
+        assert.strictEqual(style.opacity, '1', 'Config panel opacity should be 1');
+        // Switch back
+        await page.click('#renderSVGBtn');
+      });
     });
 
     // -----------------------------------------------------------------------
-    // SVG overflow — markers must not be hard-clipped by SVG viewport
+    // Infinite grid via SVG pattern tiles
     // -----------------------------------------------------------------------
-    describe('SVG overflow', () => {
-      it('SVG element has overflow="visible"', async () => {
+    describe('Infinite grid', () => {
+      it('grid uses SVG pattern tiles', async () => {
         if (!commander) return;
-        const overflow = await page.evaluate(() =>
-          document.querySelector('svg')?.getAttribute('overflow')
-        );
-        assert.strictEqual(overflow, 'visible',
-          'SVG element should have overflow="visible" to prevent marker clipping');
+        const hasPatterns = await page.evaluate(() => {
+          const defs = document.querySelector('svg defs');
+          return defs?.querySelectorAll('pattern').length >= 2;
+        });
+        assert.ok(hasPatterns, 'Expected at least 2 pattern elements for grid tiling');
       });
     });
 

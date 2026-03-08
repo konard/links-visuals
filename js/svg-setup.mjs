@@ -1,6 +1,11 @@
-// SVG setup — creates the SVG element, scene/grid/geometry groups.
-// applyCanvasTransform — updates the scene group's SVG transform attribute.
-// screenToWorld — converts screen (client) coordinates to world coordinates.
+// SVG setup — creates the SVG element and the grid group.
+// applyCanvasTransform — applies CSS transform on the SVG element (pan/zoom).
+// screenToWorld — converts screen (client) coordinates to SVG-local coordinates.
+//
+// IMPORTANT: The canvas pan/zoom is applied as a CSS transform on the SVG
+// element itself (translateX/Y + scale), NOT as an SVG group transform.
+// This matches the reference implementation and ensures markers render
+// correctly relative to the path stroke at any zoom level.
 
 import * as state from './state.mjs';
 
@@ -10,30 +15,23 @@ export function setD3(d3) { _d3 = d3; }
 
 export function initSVG() {
   const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  // Allow marker content to render outside the SVG viewport (no hard clipping).
-  svgEl.setAttribute("overflow", "visible");
   const svg = _d3.select("body").append(() => svgEl);
 
-  // Create a single <defs> element shared by markers and grid patterns.
+  // defs for markers
   svg.append("defs");
 
-  // sceneGroup: all visible geometry lives here.
-  // The world pan/zoom transform is applied as an SVG attribute so the
-  // browser renders everything as crisp vectors at any zoom level.
-  const sceneGroup    = svg.append("g").attr("class", "scene");
-  const gridGroup     = sceneGroup.append("g").attr("class", "grid");
-  const geometryGroup = sceneGroup.append("g").attr("class", "geometry");
+  const gridGroup = svg.insert("g", ":first-child").attr("class", "grid");
 
   state.setSvgEl(svgEl);
   state.setSvg(svg);
-  state.setSceneGroup(sceneGroup);
   state.setGridGroup(gridGroup);
-  state.setGeometryGroup(geometryGroup);
 }
 
 export function applyCanvasTransform() {
-  state.sceneGroup.attr("transform",
-    `translate(${state.canvasOffsetX},${state.canvasOffsetY}) scale(${state.canvasScale})`);
+  // CSS transform on the SVG element — keeps markers crisp and correctly sized.
+  state.svg.style("transform",
+    `translate(${state.canvasOffsetX}px, ${state.canvasOffsetY}px) scale(${state.canvasScale})`);
+  state.svg.style("transform-origin", "0 0");
 }
 
 export function screenToWorld(clientX, clientY) {
