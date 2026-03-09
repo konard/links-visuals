@@ -139,7 +139,8 @@ describe(
         });
 
         // Scroll at top-left corner (5, 5) — far from the arrow link in the center
-        await page.mouse.wheel({ deltaY: -120 }, { x: 5, y: 5 });
+        await page.mouse.move(5, 5);
+        await page.mouse.wheel(0, -120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {
@@ -170,7 +171,8 @@ describe(
           return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
         });
 
-        await page.mouse.wheel({ deltaY: 120 }, { x: vpW - 5, y: vpH - 5 });
+        await page.mouse.move(vpW - 5, vpH - 5);
+        await page.mouse.wheel(0, 120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {
@@ -198,7 +200,8 @@ describe(
           return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
         });
 
-        await page.mouse.wheel({ deltaY: -120 }, { x: vpW - 5, y: 5 });
+        await page.mouse.move(vpW - 5, 5);
+        await page.mouse.wheel(0, -120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {

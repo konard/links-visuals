@@ -331,7 +331,8 @@ describe(
 
         // Scroll at top-left corner (5, 5) — far from the arrow link in the center
         // This is the empty area between grid lines that was broken before the fix
-        await page.mouse.wheel({ deltaY: -120 }, { x: 5, y: 5 });
+        await page.mouse.move(5, 5);
+        await page.mouse.wheel(0, -120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {
@@ -364,7 +365,8 @@ describe(
         });
 
         // Scroll at bottom-right corner — far from the arrow link
-        await page.mouse.wheel({ deltaY: 120 }, { x: vpW - 5, y: vpH - 5 });
+        await page.mouse.move(vpW - 5, vpH - 5);
+        await page.mouse.wheel(0, 120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {
@@ -394,7 +396,8 @@ describe(
         });
 
         // Scroll at top-right corner — far from the arrow link
-        await page.mouse.wheel({ deltaY: -120 }, { x: vpW - 5, y: 5 });
+        await page.mouse.move(vpW - 5, 5);
+        await page.mouse.wheel(0, -120);
         await page.waitForTimeout(100);
 
         const scaleAfter = await page.evaluate(() => {
