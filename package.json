@@ -4,8 +4,9 @@
   "description": "Interactive link blueprint visualizations",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/",
-    "test:e2e": "RUN_E2E=true node --test tests/animated-blueprint.e2e.test.mjs"
+    "test": "node --test tests/zoom-pan.unit.test.mjs",
+    "test:unit": "node --test tests/zoom-pan.unit.test.mjs",
+    "test:e2e": "RUN_E2E=true node --test tests/animated-blueprint.e2e.test.mjs tests/blueprint.e2e.test.mjs"
   },
   "devDependencies": {
     "browser-commander": "^0.5.4",

@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   pull_request:
@@ -7,7 +7,21 @@ on:
     branches: [main]
 
 jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run unit tests
+        run: node --test tests/zoom-pan.unit.test.mjs
+
   e2e:
+    name: E2E tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +50,12 @@ jobs:
             sleep 1
           done
 
-      - name: Run E2E tests
+      - name: Run animated-blueprint E2E tests
         run: RUN_E2E=true node --test tests/animated-blueprint.e2e.test.mjs
+        env:
+          TEST_URL: http://localhost:8080
+
+      - name: Run blueprint E2E tests
+        run: RUN_E2E=true node --test tests/blueprint.e2e.test.mjs
         env:
           TEST_URL: http://localhost:8080

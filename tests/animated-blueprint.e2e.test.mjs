@@ -297,5 +297,154 @@ describe(
         assert.ok(moved, 'start circle should have moved after drag');
       });
     });
+
+    // -----------------------------------------------------------------------
+    // Zoom works at any point on the infinite grid (bug fix: pointer-events)
+    // -----------------------------------------------------------------------
+    describe('Zoom at any grid position', () => {
+      it('SVG element has pointer-events:all so empty grid areas receive wheel events', async () => {
+        if (!commander) return;
+        // The fix sets pointer-events:all on the SVG element via CSS style.
+        // Without this, SVG default pointer-events (visiblePainted) only fires
+        // events over painted pixels — leaving empty space between grid lines
+        // unresponsive to zoom/pan gestures.
+        const pointerEvents = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          return svg ? svg.style.pointerEvents : null;
+        });
+        assert.strictEqual(pointerEvents, 'all',
+          'SVG element must have pointer-events:all so wheel/mouse events fire everywhere on grid');
+      });
+
+      it('zoom via wheel works at the top-left corner of the viewport (empty grid area)', async () => {
+        if (!commander) return;
+        await page.click('#renderSVGBtn');
+
+        // Reset zoom/pan first by reloading to baseline
+        const scaleBefore = await page.evaluate(() => {
+          // Access the SVG transform to get current scale
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        // Scroll at top-left corner (5, 5) — far from the arrow link in the center
+        // This is the empty area between grid lines that was broken before the fix
+        await page.mouse.move(5, 5);
+        await page.mouse.wheel(0, -120);
+        await page.waitForTimeout(100);
+
+        const scaleAfter = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        assert.notStrictEqual(scaleAfter, scaleBefore,
+          'Scale should change when scrolling at top-left corner (empty grid area)');
+        assert.ok(scaleAfter > scaleBefore,
+          'Scrolling up (negative deltaY) should zoom in');
+      });
+
+      it('zoom via wheel works at the bottom-right corner of the viewport (empty grid area)', async () => {
+        if (!commander) return;
+        await page.click('#renderSVGBtn');
+
+        const { vpW, vpH } = await page.evaluate(() => ({
+          vpW: window.innerWidth,
+          vpH: window.innerHeight,
+        }));
+
+        const scaleBefore = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        // Scroll at bottom-right corner — far from the arrow link
+        await page.mouse.move(vpW - 5, vpH - 5);
+        await page.mouse.wheel(0, 120);
+        await page.waitForTimeout(100);
+
+        const scaleAfter = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        assert.notStrictEqual(scaleAfter, scaleBefore,
+          'Scale should change when scrolling at bottom-right corner (empty grid area)');
+        assert.ok(scaleAfter < scaleBefore,
+          'Scrolling down (positive deltaY) should zoom out');
+      });
+
+      it('zoom via wheel works at the top-right corner of the viewport (empty grid area)', async () => {
+        if (!commander) return;
+        await page.click('#renderSVGBtn');
+
+        const vpW = await page.evaluate(() => window.innerWidth);
+
+        const scaleBefore = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        // Scroll at top-right corner — far from the arrow link
+        await page.mouse.move(vpW - 5, 5);
+        await page.mouse.wheel(0, -120);
+        await page.waitForTimeout(100);
+
+        const scaleAfter = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          return scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+        });
+
+        assert.notStrictEqual(scaleAfter, scaleBefore,
+          'Scale should change when scrolling at top-right corner (empty grid area)');
+      });
+
+      it('pan via drag works at empty grid areas', async () => {
+        if (!commander) return;
+        await page.click('#renderSVGBtn');
+
+        // Get the initial canvas transform offset
+        const offsetBefore = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const translateMatch = transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+          return translateMatch
+            ? { x: parseFloat(translateMatch[1]), y: parseFloat(translateMatch[2]) }
+            : { x: 0, y: 0 };
+        });
+
+        // Drag from top-left corner (empty grid area, not on any link/circle)
+        await page.mouse.move(10, 10);
+        await page.mouse.down();
+        await page.mouse.move(110, 60, { steps: 5 });
+        await page.mouse.up();
+        await page.waitForTimeout(100);
+
+        const offsetAfter = await page.evaluate(() => {
+          const svg = document.querySelector('svg');
+          const transform = svg ? svg.style.transform : '';
+          const translateMatch = transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+          return translateMatch
+            ? { x: parseFloat(translateMatch[1]), y: parseFloat(translateMatch[2]) }
+            : { x: 0, y: 0 };
+        });
+
+        const panDist = Math.hypot(offsetAfter.x - offsetBefore.x, offsetAfter.y - offsetBefore.y);
+        assert.ok(panDist > 1,
+          'Canvas should have panned when dragging from empty grid area');
+      });
+    });
   }
 );
