@@ -24,6 +24,13 @@ export function initSVG() {
   // CSS pan/zoom transform is applied — making the grid appear finite.
   svg.attr("overflow", "visible");
 
+  // pointer-events:all ensures the SVG element receives wheel/mouse/touch
+  // events everywhere on the infinite grid, not just where painted content
+  // (path, circles) exists. The default SVG pointer-events value is
+  // "visiblePainted", which only fires events over painted pixels — leaving
+  // the empty space between grid lines unresponsive to zoom/pan gestures.
+  svg.style("pointer-events", "all");
+
   // defs for markers
   svg.append("defs");
 
