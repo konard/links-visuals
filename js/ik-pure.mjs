@@ -110,16 +110,18 @@ export function solveIK(root, target, preferredSide, segLen, maxReach, sideToler
 export function computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance) {
   const root = { x: center.x, y: center.y };
 
-  // Left half: center → p3 → p2 → p1 → start (mirrored)
-  const tgtL = { x: start.x, y: start.y };
-  const tL   = { x: root.x + Math.abs(tgtL.x - root.x), y: tgtL.y };
-  const resL = solveIK(root, tL, 0, segLen, maxReach, sideTolerance);
-  const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: p.y }));
-
-  // Right half: center → p4 → p5 → p6 → end
+  // Right half first: center → p4 → p5 → p6 → end
   const tgtR = { x: end.x, y: end.y };
   const resR = solveIK(root, tgtR, 0, segLen, maxReach, sideTolerance);
   const arcR = resR.arc;
+
+  // Left half: center → p3 → p2 → p1 → start (mirrored)
+  // Use opposite preferred side from right half to ensure S-wave continuity,
+  // matching ik.mjs behavior: preferLeft = -resL.preferredSide (negated)
+  const tgtL = { x: start.x, y: start.y };
+  const tL   = { x: root.x + Math.abs(tgtL.x - root.x), y: tgtL.y };
+  const resL = solveIK(root, tL, -resR.preferredSide, segLen, maxReach, sideTolerance);
+  const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: p.y }));
 
   return {
     p3: { x: arcL[1].x, y: arcL[1].y },

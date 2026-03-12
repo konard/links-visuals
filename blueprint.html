@@ -283,7 +283,14 @@
       });
 
       // Apply initial layout mode (restore saved or default to auto)
-      setLayoutMode(saved?.layoutMode || 'auto');
+      const initialMode = saved?.layoutMode || 'auto';
+      setLayoutMode(initialMode);
+
+      // In auto mode, enable animation immediately so IK computes the
+      // initial wave shape on the first frame (instead of waiting for drag).
+      if (initialMode === 'auto') {
+        state.setAnimationEnabled(true);
+      }
 
       startAnimationLoop();
     })();

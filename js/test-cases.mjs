@@ -99,7 +99,15 @@ export const testCases = [
     startFactor: { x: -3.5, y: 0 },
     endFactor:   { x:  3.5, y: 0 },
     checks(center, pts, segLen) {
-      return [...symmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
+      // S-wave continuity: p3 and p4 must be on opposite sides of center Y
+      const p3side = Math.sign(pts.p3.y - center.y);
+      const p4side = Math.sign(pts.p4.y - center.y);
+      const continuity = {
+        id: "p3",
+        pass: p3side !== 0 && p4side !== 0 && p3side !== p4side,
+        label: `S-wave continuity: p3 y-side=${p3side}, p4 y-side=${p4side} (must be opposite)`
+      };
+      return [continuity, ...symmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
     }
   },
   {
