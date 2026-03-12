@@ -56,6 +56,7 @@ describe('IK symmetry — shared test cases', () => {
       const dynMaxReach = Math.max(maxReach, distL, distR);
 
       for (const [name, p] of Object.entries(pts)) {
+        if (typeof p !== 'object' || p === null) continue;
         const dist = Math.hypot(p.x - cx, p.y - cy);
         assert.ok(dist <= dynMaxReach + TOLERANCE,
           `${tc.name} — ${name} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is ${dist.toFixed(1)} from center, exceeds dynMaxReach ${dynMaxReach}`);
