@@ -85,6 +85,33 @@ export function maxReachChecks(center, pts, maxReach) {
 
 export const testCases = [
   {
+    name: "Horizontal straight",
+    description: "Start left, end right — at exactly max reach (4×), all points collinear",
+    startFactor: { x: -4, y: 0 },
+    endFactor:   { x:  4, y: 0 },
+    checks(center, pts, segLen) {
+      // All intermediate points should be on the same Y as center (collinear)
+      const collinearChecks = [
+        { id: "p3", pass: close(pts.p3.y, center.y), label: `p3 collinear: y=${pts.p3.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+        { id: "p2", pass: close(pts.p2.y, center.y), label: `p2 collinear: y=${pts.p2.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+        { id: "p1", pass: close(pts.p1.y, center.y), label: `p1 collinear: y=${pts.p1.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+        { id: "p4", pass: close(pts.p4.y, center.y), label: `p4 collinear: y=${pts.p4.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+        { id: "p5", pass: close(pts.p5.y, center.y), label: `p5 collinear: y=${pts.p5.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+        { id: "p6", pass: close(pts.p6.y, center.y), label: `p6 collinear: y=${pts.p6.y.toFixed(1)} ≈ center.y=${center.y.toFixed(1)}` },
+      ];
+      // Equal spacing: each point should be 1× segLen apart along X
+      const spacingChecks = [
+        { id: "p3", pass: close(pts.p3.x, center.x - 1 * segLen), label: `p3 x-spacing: x=${pts.p3.x.toFixed(1)} ≈ ${(center.x - segLen).toFixed(1)}` },
+        { id: "p2", pass: close(pts.p2.x, center.x - 2 * segLen), label: `p2 x-spacing: x=${pts.p2.x.toFixed(1)} ≈ ${(center.x - 2*segLen).toFixed(1)}` },
+        { id: "p1", pass: close(pts.p1.x, center.x - 3 * segLen), label: `p1 x-spacing: x=${pts.p1.x.toFixed(1)} ≈ ${(center.x - 3*segLen).toFixed(1)}` },
+        { id: "p4", pass: close(pts.p4.x, center.x + 1 * segLen), label: `p4 x-spacing: x=${pts.p4.x.toFixed(1)} ≈ ${(center.x + segLen).toFixed(1)}` },
+        { id: "p5", pass: close(pts.p5.x, center.x + 2 * segLen), label: `p5 x-spacing: x=${pts.p5.x.toFixed(1)} ≈ ${(center.x + 2*segLen).toFixed(1)}` },
+        { id: "p6", pass: close(pts.p6.x, center.x + 3 * segLen), label: `p6 x-spacing: x=${pts.p6.x.toFixed(1)} ≈ ${(center.x + 3*segLen).toFixed(1)}` },
+      ];
+      return [...collinearChecks, ...spacingChecks, ...segmentChecks(center, pts, segLen)];
+    }
+  },
+  {
     name: "Vertical symmetric",
     description: "Start below, end above center — same X, equal distance",
     startFactor: { x: 0, y: 2.5 },
