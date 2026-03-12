@@ -39,14 +39,14 @@ function rotateAround(pArr, phi, root) {
   }
 }
 
-function clampFirstJoint(arc, root, maxDelta = IK_FIRST_MAX_DELTA) {
+function clampFirstJoint(arc, root, maxDelta = IK_FIRST_MAX_DELTA, initAngle = IK_FIRST_INIT_ANGLE) {
   const firstDir = Math.atan2(arc[1].y - root.y, arc[1].x - root.x);
-  const delta    = normAngle(firstDir - IK_FIRST_INIT_ANGLE);
+  const delta    = normAngle(firstDir - initAngle);
   if (delta >  maxDelta) rotateAround(arc,  maxDelta - delta, root);
   if (delta < -maxDelta) rotateAround(arc, -maxDelta - delta, root);
 }
 
-function bestArc(side, baseAngle, root, target, segLen) {
+function bestArc(side, baseAngle, root, target, segLen, initAngle = IK_FIRST_INIT_ANGLE) {
   let best = Infinity, bestArcResult = null;
   const thetaMax = Math.PI * 2 / IK_SEG_COUNT - 1e-4;
   for (let i = 0; i <= IK_SWEEP_STEPS; i++) {
@@ -56,11 +56,11 @@ function bestArc(side, baseAngle, root, target, segLen) {
     const d     = Math.hypot(end.x - target.x, end.y - target.y);
     if (d < best) { best = d; bestArcResult = arc; }
   }
-  clampFirstJoint(bestArcResult, root);
+  clampFirstJoint(bestArcResult, root, undefined, initAngle);
   return { arc: bestArcResult, dist: best };
 }
 
-export function solveIK(root, target, preferredSide, segLen, maxReach, sideTolerance) {
+export function solveIK(root, target, preferredSide, segLen, maxReach, sideTolerance, initAngle = IK_FIRST_INIT_ANGLE) {
   const dx = target.x - root.x, dy = target.y - root.y, d = Math.hypot(dx, dy);
   if (preferredSide === 0) preferredSide = dy < 0 ? 1 : -1;
   const eff = Math.min(d, maxReach);
@@ -89,12 +89,10 @@ export function solveIK(root, target, preferredSide, segLen, maxReach, sideToler
     up.dist   = Math.hypot(up.arc[IK_SEG_COUNT].x   - target.x, up.arc[IK_SEG_COUNT].y   - target.y);
     down.dist = Math.hypot(down.arc[IK_SEG_COUNT].x - target.x, down.arc[IK_SEG_COUNT].y - target.y);
   } else {
-    const base = Math.max(
-      IK_FIRST_INIT_ANGLE - IK_FIRST_MAX_DELTA,
-      Math.min(IK_FIRST_INIT_ANGLE + IK_FIRST_MAX_DELTA, Math.atan2(dy, dx))
-    );
-    up   = bestArc( 1, base, root, target, segLen);
-    down = bestArc(-1, base, root, target, segLen);
+    // Base starts from initAngle (no delta), bestArc sweeps for best curvature.
+    // clampFirstJoint uses initAngle with full maxDelta.
+    up   = bestArc( 1, initAngle, root, target, segLen, initAngle);
+    down = bestArc(-1, initAngle, root, target, segLen, initAngle);
   }
 
   const cur = preferredSide > 0 ? up   : down;
@@ -123,15 +121,19 @@ export function computeIntermediatePoints(center, start, end, segLen, maxReach, 
   const maxReachL = IK_SEG_COUNT * segLenL;
 
   // Right half first: center → p4 → p5 → p6 → end
+  // Use target direction as initAngle for rotation invariance in the else branch.
+  const endAngle = distR > 1e-6 ? Math.atan2(end.y - root.y, end.x - root.x) : IK_FIRST_INIT_ANGLE;
   const tgtR = { x: end.x, y: end.y };
-  const resR = solveIK(root, tgtR, preferRight, segLenR, maxReachR, sideTolerance);
+  const resR = solveIK(root, tgtR, preferRight, segLenR, maxReachR, sideTolerance, endAngle);
   const arcR = resR.arc;
 
   // Left half: center → p3 → p2 → p1 → start (central mirror)
-  // Mirror start through center, solve, then mirror result back.
+  // Use right half's first segment direction as init angle for rotation invariance.
+  // This ensures the left half's constraint is relative to the right half's geometry.
+  const rightFirstDir = Math.atan2(arcR[1].y - root.y, arcR[1].x - root.x);
   const tL   = { x: 2 * root.x - start.x, y: 2 * root.y - start.y };
   const prefL = preferLeft !== 0 ? -preferLeft : resR.preferredSide;
-  const resL = solveIK(root, tL, prefL, segLenL, maxReachL, sideTolerance);
+  const resL = solveIK(root, tL, prefL, segLenL, maxReachL, sideTolerance, rightFirstDir);
   const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: 2 * root.y - p.y }));
 
   return {
