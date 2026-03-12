@@ -121,6 +121,23 @@ export const testCases = [
     }
   },
   {
+    name: "Vertical wave-like",
+    description: "Start below, end above — same X, at 2× gridSpacing (S-curve)",
+    startFactor: { x: 0, y: 2 },
+    endFactor:   { x: 0, y: -2 },
+    checks(center, pts, segLen) {
+      // S-wave continuity: p3 and p4 must be on opposite sides of center X
+      const p3side = Math.sign(pts.p3.x - center.x);
+      const p4side = Math.sign(pts.p4.x - center.x);
+      const continuity = {
+        id: "p3",
+        pass: p3side !== 0 && p4side !== 0 && p3side !== p4side,
+        label: `S-wave continuity: p3 x-side=${p3side}, p4 x-side=${p4side} (must be opposite)`
+      };
+      return [continuity, ...symmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
+    }
+  },
+  {
     name: "Horizontal wave-like",
     description: "Start left, end right — same Y, at 3.5× gridSpacing (near max reach)",
     startFactor: { x: -3.5, y: 0 },
@@ -144,6 +161,36 @@ export const testCases = [
     endFactor:   { x:  2, y: -2 },
     checks(center, pts, segLen) {
       return [...distanceSymmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
+    }
+  },
+  {
+    name: "Diagonal wave-like",
+    description: "Start bottom-right, end top-left — centrally symmetric S-curve",
+    startFactor: { x: 0.5, y: 2.5 },
+    endFactor:   { x: -0.5, y: -2.5 },
+    checks(center, pts, segLen) {
+      // Central symmetry: p3 offset ≈ negated p4 offset, etc.
+      const centralChecks = [
+        { id: "p3", pass: close(pts.p3.x - center.x, -(pts.p4.x - center.x))
+                        && close(pts.p3.y - center.y, -(pts.p4.y - center.y)),
+          label: "p3↔p4 centrally symmetric" },
+        { id: "p2", pass: close(pts.p2.x - center.x, -(pts.p5.x - center.x))
+                        && close(pts.p2.y - center.y, -(pts.p5.y - center.y)),
+          label: "p2↔p5 centrally symmetric" },
+        { id: "p1", pass: close(pts.p1.x - center.x, -(pts.p6.x - center.x))
+                        && close(pts.p1.y - center.y, -(pts.p6.y - center.y)),
+          label: "p1↔p6 centrally symmetric" },
+        { id: "p4", pass: close(pts.p4.x - center.x, -(pts.p3.x - center.x))
+                        && close(pts.p4.y - center.y, -(pts.p3.y - center.y)),
+          label: "p4↔p3 centrally symmetric" },
+        { id: "p5", pass: close(pts.p5.x - center.x, -(pts.p2.x - center.x))
+                        && close(pts.p5.y - center.y, -(pts.p2.y - center.y)),
+          label: "p5↔p2 centrally symmetric" },
+        { id: "p6", pass: close(pts.p6.x - center.x, -(pts.p1.x - center.x))
+                        && close(pts.p6.y - center.y, -(pts.p1.y - center.y)),
+          label: "p6↔p1 centrally symmetric" },
+      ];
+      return [...centralChecks, ...segmentChecks(center, pts, segLen)];
     }
   },
   {

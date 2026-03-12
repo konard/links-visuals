@@ -20,14 +20,13 @@ export function updateIntermediateViaIK() {
   state.byId.p5.x = arcR[2].x; state.byId.p5.y = arcR[2].y;
   state.byId.p6.x = arcR[3].x; state.byId.p6.y = arcR[3].y;
 
-  // Left half: center → p3 → p2 → p1 → start (mirrored)
-  // Use opposite of right side's preferred side to ensure S-wave continuity
-  const tgtL = { x: state.byId.start.x, y: state.byId.start.y };
-  const tL   = { x: root.x + Math.abs(tgtL.x - root.x), y: tgtL.y };
-  const preferL = state.preferLeft !== 0 ? -state.preferLeft : -resR.preferredSide;
+  // Left half: center → p3 → p2 → p1 → start (central mirror)
+  // Mirror start through center, solve, then mirror result back.
+  const tL   = { x: 2 * root.x - state.byId.start.x, y: 2 * root.y - state.byId.start.y };
+  const preferL = state.preferLeft !== 0 ? -state.preferLeft : resR.preferredSide;
   const resL = solveIK(root, tL, preferL, state.SEG_LEN, state.MAX_REACH, state.SIDE_TOLERANCE);
   state.setPreferLeft(-resL.preferredSide);
-  const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: p.y }));
+  const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: 2 * root.y - p.y }));
   state.byId.p3.x = arcL[1].x; state.byId.p3.y = arcL[1].y;
   state.byId.p2.x = arcL[2].x; state.byId.p2.y = arcL[2].y;
   state.byId.p1.x = arcL[3].x; state.byId.p1.y = arcL[3].y;
