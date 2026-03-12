@@ -147,12 +147,29 @@ export const testCases = [
     }
   },
   {
-    name: "Self-referencing",
+    name: "Loop",
     description: "Start and end at same position below center",
     startFactor: { x: 0, y: 2 },
     endFactor:   { x: 0, y: 2 },
     checks(center, pts, segLen) {
       return [...distanceSymmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
+    }
+  },
+  {
+    name: "Self-referencing",
+    description: "Start and end both at center — figure-eight shape",
+    startFactor: { x: 0, y: 0 },
+    endFactor:   { x: 0, y: 0 },
+    checks(center, pts, segLen) {
+      // p3 and p4 should be on opposite sides of center Y (figure-eight)
+      const p3side = Math.sign(pts.p3.y - center.y);
+      const p4side = Math.sign(pts.p4.y - center.y);
+      const continuity = {
+        id: "p3",
+        pass: p3side !== 0 && p4side !== 0 && p3side !== p4side,
+        label: `Figure-eight continuity: p3 y-side=${p3side}, p4 y-side=${p4side} (must be opposite)`
+      };
+      return [continuity, ...distanceSymmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
     }
   },
 ];
