@@ -110,16 +110,24 @@ export function solveIK(root, target, preferredSide, segLen, maxReach, sideToler
 export function computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance) {
   const root = { x: center.x, y: center.y };
 
+  // Dynamic segment length: proportional to distance, minimum is segLen
+  const distR = Math.hypot(end.x - root.x, end.y - root.y);
+  const distL = Math.hypot(start.x - root.x, start.y - root.y);
+  const segLenR = Math.max(segLen, distR / IK_SEG_COUNT);
+  const segLenL = Math.max(segLen, distL / IK_SEG_COUNT);
+  const maxReachR = IK_SEG_COUNT * segLenR;
+  const maxReachL = IK_SEG_COUNT * segLenL;
+
   // Right half first: center → p4 → p5 → p6 → end
   const tgtR = { x: end.x, y: end.y };
-  const resR = solveIK(root, tgtR, 0, segLen, maxReach, sideTolerance);
+  const resR = solveIK(root, tgtR, 0, segLenR, maxReachR, sideTolerance);
   const arcR = resR.arc;
 
   // Left half: center → p3 → p2 → p1 → start (central mirror)
   // Mirror start through center, solve, then mirror result back.
   // This ensures central symmetry for any start/end configuration.
   const tL   = { x: 2 * root.x - start.x, y: 2 * root.y - start.y };
-  const resL = solveIK(root, tL, resR.preferredSide, segLen, maxReach, sideTolerance);
+  const resL = solveIK(root, tL, resR.preferredSide, segLenL, maxReachL, sideTolerance);
   const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: 2 * root.y - p.y }));
 
   return {

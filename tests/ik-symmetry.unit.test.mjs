@@ -37,7 +37,7 @@ describe('IK symmetry — shared test cases', () => {
       const end   = { x: cx + tc.endFactor.x * gridSpacing,   y: cy + tc.endFactor.y * gridSpacing };
 
       const pts = computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance);
-      const checks = tc.checks(center, pts, segLen);
+      const checks = tc.checks(center, pts, segLen, start, end);
 
       for (const c of checks) {
         assert.ok(c.pass, `${tc.name} — ${c.label}`);
@@ -45,16 +45,20 @@ describe('IK symmetry — shared test cases', () => {
     });
   }
 
-  it('all intermediate points lie within maxReach of center', () => {
+  it('all intermediate points lie within dynamic maxReach of center', () => {
     for (const tc of testCases) {
       const start = { x: cx + tc.startFactor.x * gridSpacing, y: cy + tc.startFactor.y * gridSpacing };
       const end   = { x: cx + tc.endFactor.x * gridSpacing,   y: cy + tc.endFactor.y * gridSpacing };
       const pts = computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance);
 
+      const distL = Math.hypot(start.x - cx, start.y - cy);
+      const distR = Math.hypot(end.x - cx, end.y - cy);
+      const dynMaxReach = Math.max(maxReach, distL, distR);
+
       for (const [name, p] of Object.entries(pts)) {
         const dist = Math.hypot(p.x - cx, p.y - cy);
-        assert.ok(dist <= maxReach + TOLERANCE,
-          `${tc.name} — ${name} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is ${dist.toFixed(1)} from center, exceeds maxReach ${maxReach}`);
+        assert.ok(dist <= dynMaxReach + TOLERANCE,
+          `${tc.name} — ${name} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is ${dist.toFixed(1)} from center, exceeds dynMaxReach ${dynMaxReach}`);
       }
     }
   });

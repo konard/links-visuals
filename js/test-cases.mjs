@@ -70,6 +70,28 @@ export function segmentChecks(center, pts, segLen) {
   return checks;
 }
 
+export function dynamicSegmentChecks(center, start, end, pts, segLen) {
+  const distL = Math.hypot(start.x - center.x, start.y - center.y);
+  const distR = Math.hypot(end.x - center.x, end.y - center.y);
+  const expectedL = Math.max(segLen, distL / IK_SEG_COUNT);
+  const expectedR = Math.max(segLen, distR / IK_SEG_COUNT);
+
+  const leftChain  = [center, pts.p3, pts.p2, pts.p1];
+  const rightChain = [center, pts.p4, pts.p5, pts.p6];
+  const checks = [];
+  for (let i = 0; i < leftChain.length - 1; i++) {
+    const d = Math.hypot(leftChain[i+1].x - leftChain[i].x, leftChain[i+1].y - leftChain[i].y);
+    const id = ["p3","p2","p1"][i];
+    checks.push({ id, pass: close(d, expectedL), label: `left seg ${i}→${i+1} len=${d.toFixed(1)} (expect ${expectedL.toFixed(1)})` });
+  }
+  for (let i = 0; i < rightChain.length - 1; i++) {
+    const d = Math.hypot(rightChain[i+1].x - rightChain[i].x, rightChain[i+1].y - rightChain[i].y);
+    const id = ["p4","p5","p6"][i];
+    checks.push({ id, pass: close(d, expectedR), label: `right seg ${i}→${i+1} len=${d.toFixed(1)} (expect ${expectedR.toFixed(1)})` });
+  }
+  return checks;
+}
+
 export function maxReachChecks(center, pts, maxReach) {
   const checks = [];
   for (const [name, p] of Object.entries(pts)) {
@@ -217,6 +239,33 @@ export const testCases = [
         label: `Figure-eight continuity: p3 y-side=${p3side}, p4 y-side=${p4side} (must be opposite)`
       };
       return [continuity, ...distanceSymmetryChecks(center, pts), ...segmentChecks(center, pts, segLen)];
+    }
+  },
+  {
+    name: "Extended horizontal (8 units)",
+    description: "Start/end at 8× gridSpacing — segments should be 2× gridSpacing each",
+    startFactor: { x: -8, y: 0 },
+    endFactor:   { x:  8, y: 0 },
+    checks(center, pts, segLen, start, end) {
+      return [...dynamicSegmentChecks(center, start, end, pts, segLen)];
+    }
+  },
+  {
+    name: "Extended vertical (6 units)",
+    description: "Start/end at 6× gridSpacing — segments should be 1.5× gridSpacing each",
+    startFactor: { x: 0, y: 6 },
+    endFactor:   { x: 0, y: -6 },
+    checks(center, pts, segLen, start, end) {
+      return [...dynamicSegmentChecks(center, start, end, pts, segLen)];
+    }
+  },
+  {
+    name: "Extended asymmetric",
+    description: "Start at 8× left, end at 4× right — left segments 2×, right segments 1×",
+    startFactor: { x: -8, y: 0 },
+    endFactor:   { x:  4, y: 0 },
+    checks(center, pts, segLen, start, end) {
+      return [...dynamicSegmentChecks(center, start, end, pts, segLen)];
     }
   },
 ];
