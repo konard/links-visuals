@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link blueprint — Visual Tests</title>
+
+  <style>
+    html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
+    svg        { display:block; touch-action:none; }
+
+    #test-results {
+      position:fixed; bottom:1vmin; left:1vmin; z-index:10;
+      background:rgba(0,0,128,.5); color:#fff;
+      padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin; white-space:pre;
+      max-height:40vh; overflow-y:auto;
+    }
+    #test-summary {
+      position:fixed; top:1vmin; left:1vmin; z-index:10;
+      background:rgba(0,0,128,.7); color:#fff;
+      padding:0.6vmin 1vmin; font:bold clamp(11px,1.4vmin,16px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin;
+    }
+    #test-nav {
+      position:fixed; top:1vmin; right:1vmin; z-index:10;
+      display:none; gap:0.5vmin;
+      align-items:center;
+    }
+    #test-nav.visible { display:flex; }
+    #test-nav button {
+      background:rgba(0,0,128,.7); color:#fff;
+      border:none; border-radius:0.4vmin;
+      padding:0.5vmin 1vmin; font:bold clamp(10px,1.3vmin,15px)/1.3 "Consolas","Courier New",monospace;
+      cursor:pointer;
+    }
+    #test-nav button:hover { background:rgba(0,0,128,.9); }
+    #test-nav button.active { background:rgba(0,128,0,.8); }
+    #test-nav button.failed { background:rgba(180,0,0,.8); }
+  </style>
+</head>
+<body>
+  <div id="test-summary"></div>
+  <div id="test-nav"></div>
+  <div id="test-results"></div>
+  <div id="coordinates" style="display:none"></div>
+
+  <script type="module">
+    const { use } = await import("https://esm.sh/use-m");
+    (async () => {
+      const d3 = await use('d3');
+
+      const { setD3: svgSetD3 } = await import('./js/svg-setup.mjs');
+      svgSetD3(d3);
+
+      const { initSVG }     = await import('./js/svg-setup.mjs');
+      const { drawGrid }    = await import('./js/grid.mjs');
+      const { initMarkers } = await import('./js/markers.mjs');
+      const { updatePath }  = await import('./js/path.mjs');
+      const state            = await import('./js/state.mjs');
+      const {
+        paddingFraction, radiusFraction, strokeFraction,
+        sideTolFraction, IK_SEG_COUNT, snapFraction
+      } = await import('./js/constants.mjs');
+
+      // Shared modules
+      const { computeIntermediatePoints } = await import('./js/ik-pure.mjs');
+      const { testCases }                 = await import('./js/test-cases.mjs');
+
+      // ---------------------------------------------------------------
+      // Init SVG scene
+      // ---------------------------------------------------------------
+      initSVG();
+
+      function setupViewport() {
+        state.setWidth(innerWidth);
+        state.setHeight(innerHeight);
+        state.setCx(state.width  / 2);
+        state.setCy(state.height / 2);
+        state.setGridSpacing(state.cx * (1 - paddingFraction) / 4);
+        state.setHalfSpacing(state.gridSpacing / 2);
+        state.setSnapThreshold(snapFraction  * state.gridSpacing);
+        state.setCircleRadius(radiusFraction * state.gridSpacing);
+        state.setSegLen(state.gridSpacing);
+        state.setMaxReach(IK_SEG_COUNT * state.gridSpacing);
+        state.setSideTolerance(sideTolFraction * state.gridSpacing);
+        state.svg.attr("width", state.width).attr("height", state.height);
+        drawGrid();
+        initMarkers();
+      }
+
+      // ---------------------------------------------------------------
+      // Run a single test case
+      // ---------------------------------------------------------------
+      function runTest(testIndex) {
+        const tc = testCases[testIndex];
+        setupViewport();
+
+        const segLen = state.gridSpacing;
+        const maxReach = IK_SEG_COUNT * segLen;
+        const sideTolerance = sideTolFraction * segLen;
+
+        const center  = { x: state.cx, y: state.cy };
+        const startPt = { x: state.cx + tc.startFactor.x * state.gridSpacing,
+                          y: state.cy + tc.startFactor.y * state.gridSpacing };
+        const endPt   = { x: state.cx + tc.endFactor.x * state.gridSpacing,
+                          y: state.cy + tc.endFactor.y * state.gridSpacing };
+
+        // Compute IK using shared pure solver
+        const ik = computeIntermediatePoints(center, startPt, endPt, segLen, maxReach, sideTolerance);
+
+        // Set point positions in state
+        state.byId.start.x  = startPt.x;  state.byId.start.y  = startPt.y;
+        state.byId.end.x    = endPt.x;    state.byId.end.y    = endPt.y;
+        state.byId.center.x = center.x;   state.byId.center.y = center.y;
+        state.byId.p1.x = ik.p1.x; state.byId.p1.y = ik.p1.y;
+        state.byId.p2.x = ik.p2.x; state.byId.p2.y = ik.p2.y;
+        state.byId.p3.x = ik.p3.x; state.byId.p3.y = ik.p3.y;
+        state.byId.p4.x = ik.p4.x; state.byId.p4.y = ik.p4.y;
+        state.byId.p5.x = ik.p5.x; state.byId.p5.y = ik.p5.y;
+        state.byId.p6.x = ik.p6.x; state.byId.p6.y = ik.p6.y;
+
+        // Run checks using shared test case definitions
+        const checks = tc.checks(center, ik, segLen);
+
+        // Build per-point pass/fail map
+        const pointStatus = {};
+        for (const c of checks) {
+          if (!(c.id in pointStatus)) pointStatus[c.id] = true;
+          if (!c.pass) pointStatus[c.id] = false;
+        }
+        pointStatus["start"]  = true;
+        pointStatus["end"]    = true;
+        pointStatus["center"] = true;
+
+        return { tc, checks, pointStatus, ik, center, startPt, endPt };
+      }
+
+      // ---------------------------------------------------------------
+      // Render a test result
+      // ---------------------------------------------------------------
+      function renderTest(result) {
+        const { tc, checks, pointStatus } = result;
+
+        state.svg.selectAll("circle.control").remove();
+        if (state.mainPath) state.mainPath.remove();
+
+        state.setMainPath(
+          state.svg.append("path")
+            .attr("fill", "none")
+            .attr("stroke", "black")
+            .attr("stroke-width", strokeFraction * state.gridSpacing)
+            .attr("marker-start", "url(#cross-marker)")
+            .attr("marker-end",   "url(#arrow-marker)")
+        );
+
+        state.setCircles(
+          state.svg.selectAll("circle.control")
+            .data(state.points, d => d.id)
+            .enter()
+            .append("circle")
+            .attr("class", d => "control " + d.id)
+            .attr("r", state.circleRadius)
+            .attr("fill", "rgba(0,0,0,0)")
+            .attr("stroke-dasharray", "4 2")
+            .attr("stroke-width", 2)
+            .attr("stroke", d => {
+              const pass = pointStatus[d.id];
+              if (pass === undefined) return "#888";
+              return pass ? "#00cc00" : "#ff0000";
+            })
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y)
+            .style("pointer-events", "none")
+        );
+
+        updatePath();
+
+        const passed = checks.filter(c => c.pass).length;
+        const total  = checks.length;
+        const lines = [`[${tc.name}] ${passed}/${total} checks passed`, tc.description, ""];
+        for (const c of checks) {
+          lines.push(`  ${c.pass ? "✓" : "✗"} ${c.label}`);
+        }
+        return { passed, total, lines };
+      }
+
+      // ---------------------------------------------------------------
+      // Navigation & run
+      // ---------------------------------------------------------------
+      setupViewport();
+
+      const summaryEl = document.getElementById("test-summary");
+      const resultsEl = document.getElementById("test-results");
+      const navEl     = document.getElementById("test-nav");
+      let allResults = [];
+      let selectedIndex = -1;
+
+      function showTest(index) {
+        selectedIndex = index;
+        const result = allResults[index];
+
+        state.byId.start.x  = result.startPt.x;  state.byId.start.y  = result.startPt.y;
+        state.byId.end.x    = result.endPt.x;     state.byId.end.y    = result.endPt.y;
+        state.byId.center.x = result.center.x;    state.byId.center.y = result.center.y;
+        state.byId.p1.x = result.ik.p1.x; state.byId.p1.y = result.ik.p1.y;
+        state.byId.p2.x = result.ik.p2.x; state.byId.p2.y = result.ik.p2.y;
+        state.byId.p3.x = result.ik.p3.x; state.byId.p3.y = result.ik.p3.y;
+        state.byId.p4.x = result.ik.p4.x; state.byId.p4.y = result.ik.p4.y;
+        state.byId.p5.x = result.ik.p5.x; state.byId.p5.y = result.ik.p5.y;
+        state.byId.p6.x = result.ik.p6.x; state.byId.p6.y = result.ik.p6.y;
+
+        renderTest(result);
+        const { tc, checks } = result;
+        const passed = checks.filter(c => c.pass).length;
+        const total  = checks.length;
+        const lines = [`[${tc.name}] ${passed}/${total} checks passed`, tc.description, ""];
+        for (const c of checks) {
+          lines.push(`  ${c.pass ? "✓" : "✗"} ${c.label}`);
+        }
+        resultsEl.textContent = lines.join("\n");
+
+        navEl.querySelectorAll("button").forEach((btn, i) => {
+          btn.style.outline = i === index ? "2px solid #fff" : "none";
+        });
+      }
+
+      function buildNav() {
+        navEl.innerHTML = "";
+        let totalPassed = 0, totalChecks = 0;
+        for (let i = 0; i < allResults.length; i++) {
+          const { tc, checks } = allResults[i];
+          const passed = checks.filter(c => c.pass).length;
+          const total  = checks.length;
+          totalPassed += passed;
+          totalChecks += total;
+          const btn = document.createElement("button");
+          btn.textContent = `${i + 1}. ${tc.name}`;
+          btn.className = passed === total ? "active" : "failed";
+          btn.addEventListener("click", () => showTest(i));
+          navEl.appendChild(btn);
+        }
+        navEl.classList.add("visible");
+
+        summaryEl.textContent = totalPassed === totalChecks
+          ? `ALL PASSED: ${totalPassed}/${totalChecks} checks across ${allResults.length} cases`
+          : `FAILED: ${totalPassed}/${totalChecks} checks across ${allResults.length} cases`;
+        summaryEl.style.background = totalPassed === totalChecks
+          ? "rgba(0,128,0,.8)" : "rgba(180,0,0,.8)";
+      }
+
+      async function runAllTests() {
+        allResults = [];
+        navEl.classList.remove("visible");
+        let totalPassed = 0, totalChecks = 0;
+        const allLines = [];
+
+        for (let i = 0; i < testCases.length; i++) {
+          const result = runTest(i);
+          const { passed, total, lines } = renderTest(result);
+          totalPassed += passed;
+          totalChecks += total;
+          allLines.push(...lines, "");
+          allResults.push(result);
+
+          resultsEl.textContent = allLines.join("\n");
+          summaryEl.textContent = `Tests: ${totalPassed}/${totalChecks} passed (${i+1}/${testCases.length} cases)`;
+          summaryEl.style.background = totalPassed === totalChecks
+            ? "rgba(0,128,0,.8)" : "rgba(180,0,0,.8)";
+
+          if (i < testCases.length - 1) {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+
+        buildNav();
+        showTest(allResults.length - 1);
+      }
+
+      addEventListener("keydown", (e) => {
+        if (allResults.length === 0) return;
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          e.preventDefault();
+          showTest((selectedIndex - 1 + allResults.length) % allResults.length);
+        } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          e.preventDefault();
+          showTest((selectedIndex + 1) % allResults.length);
+        }
+      });
+
+      runAllTests();
+      addEventListener("resize", () => runAllTests());
+    })();
+  </script>
+</body>
+</html>

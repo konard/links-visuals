@@ -5,137 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Link blueprint</title>
 
-  <!--
-  REQUIREMENTS / BEHAVIOUR SPEC — LINK BLUEPRINT
-  -------------------------------------------------------------------------------
-  OVERVIEW
-  • Demonstrates how to render an interactive "link" that can even loop back onto
-    its own source (self-referential).  The link has a distinct start (source)
-    and end (target) anchor, both user-movable.
-  • The line segment between the anchors is a smooth spline (Catmull–Rom turned
-    into cubic Béziers) providing C¹ continuity through every control point.
-
-  PAGE & VIEWPORT
-  • Fills the entire viewport; no scroll-bars.
-  • Pastel-blue background #E0F7FA.
-  • Everything lives inside one full-window <svg> element.
-  • Fully responsive: supports any screen size, orientation, and browser zoom level.
-
-  GRID
-  • Cartesian grid centred at window centre (cx, cy), transformed by the current
-    canvas pan/zoom transform.
-    – Major lines every 1 gridSpacing, minor every 0.5 gridSpacing.
-    – gridSpacing := cx × (1 − paddingFraction) ÷ 4  (re-computed on resize).
-      paddingFraction = 0.215, making gridSpacing ≈ 19.6 % of half-viewport width.
-    – All geometry (circle radii, stroke widths, snap threshold, offset amounts)
-      scales proportionally with gridSpacing.
-    – Major: 1 px stroke @ 80 % α; minor: 0.5 px stroke @ 50 % α.
-  • Grid is infinite in all directions (no bounds), extending beyond the viewport.
-  • Implemented via an SVG <pattern> tile so the number of DOM nodes is constant
-    regardless of viewport size or zoom level.
-
-  CANVAS ZOOM & PAN
-  • Browser zoom does NOT affect the canvas geometry; only UI control panels
-    change size with browser zoom (they use viewport-relative units).
-  • Canvas zoom: scroll wheel (mouse) or pinch gesture (trackpad / touch screen)
-    scales only the canvas (geometry + grid).  UI panels are unaffected.
-  • Canvas pan: click-and-drag on empty space (not on a control circle) translates
-    the canvas.  Touch single-finger drag also pans when not over a control circle.
-  • Zoom centre tracks the pointer/pinch-midpoint position.
-  • Canvas transform is a CSS transform on the SVG element (translateX/Y + scale),
-    keeping all rendering fully vector — crisp and artifact-free at any zoom level.
-
-  CONTROL POINTS
-  • Nine logical points:  start, p1–p6, center, end.
-    – start   (source)  green outline, draggable
-    – end     (target)  red   outline, draggable
-    – p1–p6   (intermediate) blue outline, **draggable** (user-adjustable geometry)
-    – center  (fixed midpoint) black outline, **not draggable**
-  • Each stores grid-relative (xFactor, yFactor) so positions survive resizing.
-  • While dragging, the circle's dashed outline disappears; it returns on drag-end.
-  • Drag snaps to the nearest half-grid (0.5 × gridSpacing) if cursor is within
-    snapFraction × gridSpacing of that snap point ("snapThreshold").
-
-  SELF-REFERENCING LINK
-  • Because start and end are independent anchors, they can be dragged onto the
-    same grid coordinate, producing a self-loop; the spline updates smoothly.
-
-  PATH
-  • strokeFraction × gridSpacing black stroke (≈ 8.5 % of gridSpacing) with
-      marker-start = small cross-hair,
-      marker-end   = double-line arrow-head.
-  • Path is rebuilt on every drag or resize.
-  • Markers use viewBox="0 0 100 100" with markerWidth/Height=100 and default
-    markerUnits="strokeWidth" so they scale automatically with the path stroke.
-
-  COORDINATE HUD
-  • Fixed, semi-transparent navy box shows rounded integer (x, y) coordinates and
-    z-index of every point; refreshed whenever points move.
-  • On desktop (≥ 600 px wide): positioned bottom-left.
-  • On mobile (< 600 px wide): positioned top, full width.
-
-  CONFIG PANEL
-  • Fixed, semi-transparent navy box contains:
-    – "Start offset" shifts the path's geometric start along the chain toward p1.
-    – "End offset"   shifts the path's geometric end   along the chain toward p6.
-  • Offsets are stored as grid units (u) — fractions of gridSpacing — so they
-    scale proportionally at any viewport size or zoom level.  Default: 0.10 u
-    (start) and 0.16 u (end).
-  • Offset is applied only to the rendered path; the actual anchor coordinates
-    are unchanged.
-  • On desktop (≥ 600 px wide): positioned bottom-right.
-  • On mobile (< 600 px wide): positioned bottom, full width.
-
-  SHOW/HIDE PANELS BUTTON
-  • A toggle button (☰ / ✕) is always visible; clicking it shows or hides both
-    the coordinates HUD and the config panel.
-  • On desktop: button appears at top-right corner.
-  • On mobile: button appears at top-right corner.
-
-  RESPONSIVE LAYOUT
-  • Desktop (≥ 600 px wide): panels at corners, sliders sized for mouse.
-  • Mobile  (< 600 px wide): coords panel at top (full width), config panel at
-    bottom (full width), sliders large enough for finger interaction.
-
-  RESIZE SUPPORT
-  • On window resize the SVG, grid, control-point positions, and spline are fully
-    recomputed so the design remains fluid and centred.
-
-  FUNDAMENTAL DIFFERENCE FROM animated-blueprint.html
-  • All intermediate control points (p1–p6) are user-draggable.
-    They are NOT automatically positioned by an IK solver — the user manually
-    adjusts the arrow-shaped link geometry.
-  • There is no animation loop; the path updates only in response to drag events
-    or window resize.
-  • There is no Canvas render mode; the SVG vector renderer is always used.
-
-  IMPLEMENTATION DETAILS
-  • Uses top-level await inside an async IIFE with the "use-m" ES-module loader
-    to import D3 v 7 lazily.
-  • No external CSS or assets beyond the loader; everything inline except the
-    JS modules imported from ./js/.
-  • Requires a modern browser with ES-modules and fetch support.
-  • Reuses shared modules from ./js/:
-      – js/constants.mjs   — immutable fractions (paddingFraction, snapFraction, …)
-      – js/state.mjs       — shared mutable state + setters
-      – js/svg-setup.mjs   — initSVG(), applyCanvasTransform(), screenToWorld()
-      – js/grid.mjs        — drawGrid() (infinite grid via SVG pattern tiles)
-      – js/hud.mjs         — updateHUD()
-      – js/markers.mjs     — initMarkers()
-      – js/geometry.mjs    — vecAdd/Sub/Scale, offsetPoint()
-      – js/path.mjs        — updatePath() (Catmull-Rom → cubic Bézier + offsets)
-      – js/zoom-pan.mjs    — wheel/mouse/touch handlers, initCanvasZoomPan()
-      – js/panels.mjs      — initPanelsToggle()
-  • Does NOT use: js/ik.mjs, js/animation.mjs, js/canvas-render.mjs,
-      js/render-mode.mjs, js/sliders.mjs, js/resize.mjs
-    (blueprint has its own resize + slider init because the point draggability
-    and absence of IK/canvas differ from animated-blueprint.html).
-
-  --------------------------------------------------------------------------------->
-
   <style>
     html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
     svg        { display:block; touch-action:none; }
+    canvas#render-canvas { display:none; position:fixed; top:0; left:0; touch-action:none; z-index:1; }
 
     /* ---- coordinates HUD ---- */
     #coordinates{
@@ -157,6 +30,18 @@
     #config-panel label{ display:block; margin-bottom:0.3vmin; }
     #config-panel input[type=range]{ width:12vw; min-width:80px; vertical-align:middle; }
     #config-panel .val{ display:inline-block; width:3vw; min-width:28px; text-align:right; }
+    #config-panel .mode-row {
+      display:flex; align-items:center; gap:0.5vmin; margin-bottom:0.3vmin;
+    }
+    #config-panel .mode-row button {
+      background:rgba(255,255,255,0.15); color:#fff;
+      border:1px solid rgba(255,255,255,0.4); border-radius:0.3vmin;
+      padding:0.2vmin 0.6vmin; font-size:inherit; cursor:pointer;
+    }
+    #config-panel .mode-row button.active {
+      background:rgba(255,255,255,0.4); font-weight:bold;
+    }
+    #config-panel .mode-row button:hover { background:rgba(255,255,255,0.3); }
 
     /* ---- toggle button ---- */
     #toggle-panels{
@@ -204,152 +89,203 @@
   <div id="config-panel">
     <label>Start offset: <input type="range" id="startOffsetSlider" min="0" max="2" value="0.10" step="0.01"> <span class="val" id="startOffsetVal">0.10</span> u</label>
     <label>End offset: &nbsp; <input type="range" id="endOffsetSlider"   min="0" max="2" value="0.16" step="0.01"> <span class="val" id="endOffsetVal">0.16</span> u</label>
+    <div class="mode-row">
+      Layout:
+      <button id="layoutAutoBtn" class="active" title="Auto layout — IK solver positions intermediate points">Auto</button>
+      <button id="layoutManualBtn" title="Manual layout — drag intermediate points freely">Manual</button>
+    </div>
+    <div class="mode-row">
+      Render:
+      <button id="renderSVGBtn" class="active" title="SVG vector rendering — crisp at any zoom">SVG</button>
+      <button id="renderCanvasBtn" title="Canvas raster rendering">Canvas</button>
+    </div>
+    <div class="mode-row">
+      <button id="resetBtn" title="Reset all settings to defaults">Reset</button>
+    </div>
   </div>
 
   <button id="toggle-panels" title="Show/hide panels">☰</button>
+
+  <canvas id="render-canvas"></canvas>
 
   <script type="module">
     const { use } = await import("https://esm.sh/use-m");
     (async () => {
       const d3 = await use('d3');
 
-      // Inject d3 into svg-setup.mjs before any init calls.
+      // Inject d3 into modules that need it before any init calls.
       const { setD3: svgSetD3 } = await import('./js/svg-setup.mjs');
+      const { setD3: cpSetD3  } = await import('./js/control-points.mjs');
       svgSetD3(d3);
+      cpSetD3(d3);
 
       const { initPanelsToggle }       = await import('./js/panels.mjs');
+      const { initSliders }            = await import('./js/sliders.mjs');
       const { initSVG, screenToWorld } = await import('./js/svg-setup.mjs');
+      const { initControlPoints }      = await import('./js/control-points.mjs');
       const { initCanvasZoomPan }      = await import('./js/zoom-pan.mjs');
-      const { drawGrid }               = await import('./js/grid.mjs');
-      const { initMarkers }            = await import('./js/markers.mjs');
+      const { resize }                 = await import('./js/resize.mjs');
+      const { startAnimationLoop }     = await import('./js/animation.mjs');
       const { updatePath }             = await import('./js/path.mjs');
+      const { updateIntermediateViaIK }= await import('./js/ik.mjs');
       const state                      = await import('./js/state.mjs');
-      const {
-        paddingFraction, snapFraction, radiusFraction, strokeFraction
-      }                                = await import('./js/constants.mjs');
 
-      // Blueprint: make all intermediate points draggable (unlike animated-blueprint
-      // where p1–p6 are owned by the IK solver and are never user-draggable).
-      state.points.forEach(p => {
-        if (p.type === "intermediate") p.draggable = true;
-      });
+      // --- LocalStorage persistence ---
+      const STORAGE_KEY = 'blueprint-settings';
 
-      // Blueprint has no animation loop, so animationEnabled never becomes true.
-      // We keep the state module as-is and simply never call startAnimationLoop().
-
-      initPanelsToggle();
-      initSVG();
-
-      // ----- Offset sliders (blueprint-specific: no canvas render mode button) -----
-      const startOffsetSlider = document.getElementById("startOffsetSlider");
-      const endOffsetSlider   = document.getElementById("endOffsetSlider");
-      const startOffsetVal    = document.getElementById("startOffsetVal");
-      const endOffsetVal      = document.getElementById("endOffsetVal");
-
-      startOffsetSlider.addEventListener("input", () => {
-        state.setStartOffsetFraction(+startOffsetSlider.value);
-        startOffsetVal.textContent = state.startOffsetFraction.toFixed(2);
-        updatePath();
-      });
-      endOffsetSlider.addEventListener("input", () => {
-        state.setEndOffsetFraction(+endOffsetSlider.value);
-        endOffsetVal.textContent = state.endOffsetFraction.toFixed(2);
-        updatePath();
-      });
-
-      // ----- Main path -----
-      state.setMainPath(
-        state.svg.append("path")
-          .attr("fill", "none")
-          .attr("stroke", "black")
-          .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
-          .attr("marker-start", "url(#cross-marker)")
-          .attr("marker-end",   "url(#arrow-marker)")
-      );
-
-      // ----- Control circles — all 9 rendered, p1–p6 draggable -----
-      state.setCircles(
-        state.svg.selectAll("circle.control")
-          .data(state.points, d => d.id)
-          .enter()
-          .append("circle")
-          .attr("class", d => "control " + d.id)
-          .attr("r", state.circleRadius)
-          .attr("fill", "rgba(0,0,0,0)")
-          .attr("stroke-dasharray", "4 2")
-          .attr("stroke", d => {
-            if (d.type === "center")   return "black";
-            if (d.type === "endpoint") return d.id === "start" ? "green" : "red";
-            return "blue";
-          })
-          .style("pointer-events", d => d.draggable ? "auto" : "none")
-      );
-
-      // Reorder SVG DOM for correct paint order (bottom → top):
-      state.circles.filter(d => d.type === "center").lower();
-      state.circles.filter(d => d.id === "start").raise();
-      state.circles.filter(d => d.id === "end").raise();
-
-      // D3 drag — converts screen coords to SVG-local coords via screenToWorld()
-      state.circles.filter(d => d.draggable).call(d3.drag()
-        .on("start", function() {
-          d3.select(this).attr("stroke-dasharray", null);
-        })
-        .on("drag", function(ev, d) {
-          const src = ev.sourceEvent;
-          const clientX = src.clientX !== undefined ? src.clientX
-                        : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
-          const clientY = src.clientY !== undefined ? src.clientY
-                        : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
-          const wpt  = screenToWorld(clientX, clientY);
-          const nx   = state.cx + Math.round((wpt.x - state.cx) / state.halfSpacing) * state.halfSpacing;
-          const ny   = state.cy + Math.round((wpt.y - state.cy) / state.halfSpacing) * state.halfSpacing;
-          const dist = Math.hypot(wpt.x - nx, wpt.y - ny);
-          d.x = dist < state.snapThreshold ? nx : wpt.x;
-          d.y = dist < state.snapThreshold ? ny : wpt.y;
-          d3.select(this).attr("cx", d.x).attr("cy", d.y);
-          updatePath();
-        })
-        .on("end", function(ev, d) {
-          d.xFactor = (d.x - state.cx) / state.gridSpacing;
-          d.yFactor = (d.y - state.cy) / state.gridSpacing;
-          d3.select(this).attr("stroke-dasharray", "4 2");
-          updatePath();
-        })
-      );
-
-      // ----- Resize (blueprint-specific: no IK, no canvas element) -----
-      function resize() {
-        state.setWidth(innerWidth);
-        state.setHeight(innerHeight);
-        state.setCx(state.width  / 2);
-        state.setCy(state.height / 2);
-        state.setGridSpacing(state.cx * (1 - paddingFraction) / 4);
-        state.setHalfSpacing(state.gridSpacing / 2);
-
-        state.setSnapThreshold(snapFraction  * state.gridSpacing);
-        state.setCircleRadius(radiusFraction * state.gridSpacing);
-
-        state.svg.attr("width", state.width).attr("height", state.height);
-
-        if (state.circles)  state.circles.attr("r", state.circleRadius);
-        if (state.mainPath) state.mainPath.attr("stroke-width", strokeFraction * state.gridSpacing);
-
-        drawGrid();
-        initMarkers();
-
-        state.points.forEach(d => {
-          d.x = state.cx + d.xFactor * state.gridSpacing;
-          d.y = state.cy + d.yFactor * state.gridSpacing;
-        });
-
-        if (state.circles) state.circles.data(state.points).attr("cx", d => d.x).attr("cy", d => d.y);
-        updatePath();
+      function saveSettings() {
+        const data = {
+          layoutMode,
+          startOffsetFraction: state.startOffsetFraction,
+          endOffsetFraction: state.endOffsetFraction,
+          points: state.points.map(p => ({ id: p.id, xFactor: p.xFactor, yFactor: p.yFactor })),
+        };
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
       }
 
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          return JSON.parse(raw);
+        } catch { return null; }
+      }
+
+      // --- Layout mode: "auto" (IK animated) or "manual" (user-draggable p1–p6) ---
+      let layoutMode = 'auto';  // default to auto (animated)
+
+      const layoutAutoBtn   = document.getElementById('layoutAutoBtn');
+      const layoutManualBtn = document.getElementById('layoutManualBtn');
+
+      function setLayoutMode(mode) {
+        layoutMode = mode;
+        if (mode === 'auto') {
+          layoutAutoBtn.classList.add('active');
+          layoutManualBtn.classList.remove('active');
+          // IK owns p1–p6: make them non-draggable
+          state.points.forEach(p => {
+            if (p.type === 'intermediate') p.draggable = false;
+          });
+          // Don't force animationEnabled here — let the first drag of
+          // start/end trigger it, matching animated-blueprint.html behavior.
+        } else {
+          layoutAutoBtn.classList.remove('active');
+          layoutManualBtn.classList.add('active');
+          // User owns p1–p6: make them draggable
+          state.points.forEach(p => {
+            if (p.type === 'intermediate') p.draggable = true;
+          });
+          state.setAnimationEnabled(false);
+        }
+        // Update pointer-events and re-wire drag handlers
+        if (state.circles) {
+          state.circles.style('pointer-events', d => d.draggable ? 'auto' : 'none');
+          // Remove all existing drag handlers, then re-attach for draggable points
+          state.circles.on('.drag', null);
+          state.circles.filter(d => d.draggable).call(d3.drag()
+            .on('start', function(ev, d) {
+              d3.select(this).attr('stroke-dasharray', null);
+              if (d.id === 'start' || d.id === 'end') {
+                state.setAnimationEnabled(true);
+              }
+            })
+            .on('drag', function(ev, d) {
+              const src = ev.sourceEvent;
+              const clientX = src.clientX !== undefined ? src.clientX
+                            : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
+              const clientY = src.clientY !== undefined ? src.clientY
+                            : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
+              const wpt  = screenToWorld(clientX, clientY);
+              const nx   = state.cx + Math.round((wpt.x - state.cx) / state.halfSpacing) * state.halfSpacing;
+              const ny   = state.cy + Math.round((wpt.y - state.cy) / state.halfSpacing) * state.halfSpacing;
+              const dist = Math.hypot(wpt.x - nx, wpt.y - ny);
+              d.x = dist < state.snapThreshold ? nx : wpt.x;
+              d.y = dist < state.snapThreshold ? ny : wpt.y;
+              d3.select(this).attr('cx', d.x).attr('cy', d.y);
+              updatePath();
+            })
+            .on('end', function(ev, d) {
+              d.xFactor = (d.x - state.cx) / state.gridSpacing;
+              d.yFactor = (d.y - state.cy) / state.gridSpacing;
+              d3.select(this).attr('stroke-dasharray', '4 2');
+              updatePath();
+              saveSettings();
+            })
+          );
+        }
+      }
+
+      layoutAutoBtn.addEventListener('click',   () => { setLayoutMode('auto'); saveSettings(); });
+      layoutManualBtn.addEventListener('click', () => { setLayoutMode('manual'); saveSettings(); });
+
+      // Restore saved settings before init
+      const saved = loadSettings();
+      if (saved) {
+        if (saved.startOffsetFraction != null) state.setStartOffsetFraction(saved.startOffsetFraction);
+        if (saved.endOffsetFraction != null) state.setEndOffsetFraction(saved.endOffsetFraction);
+        if (saved.points) {
+          for (const sp of saved.points) {
+            const p = state.byId[sp.id];
+            if (p) { p.xFactor = sp.xFactor; p.yFactor = sp.yFactor; }
+          }
+        }
+      }
+
+      initPanelsToggle();
+      initSliders();
+      initSVG();
+      initControlPoints();
       initCanvasZoomPan();
-      addEventListener("resize", resize);
+      addEventListener('resize', resize);
       resize();
+
+      // Sync slider UI with restored values
+      const startSlider = document.getElementById('startOffsetSlider');
+      const endSlider   = document.getElementById('endOffsetSlider');
+      const startVal    = document.getElementById('startOffsetVal');
+      const endVal      = document.getElementById('endOffsetVal');
+      startSlider.value = state.startOffsetFraction;
+      endSlider.value   = state.endOffsetFraction;
+      startVal.textContent = state.startOffsetFraction.toFixed(2);
+      endVal.textContent   = state.endOffsetFraction.toFixed(2);
+
+      // Save on slider change
+      startSlider.addEventListener('input', () => saveSettings());
+      endSlider.addEventListener('input', () => saveSettings());
+
+      // Reset button
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        localStorage.removeItem(STORAGE_KEY);
+        // Restore default point factors
+        const defaults = [
+          { id:"start", xFactor:-4, yFactor:0 },
+          { id:"p1",    xFactor:-3, yFactor:0 },
+          { id:"p2",    xFactor:-2, yFactor:0 },
+          { id:"p3",    xFactor:-1, yFactor:0 },
+          { id:"center",xFactor: 0, yFactor:0 },
+          { id:"p4",    xFactor: 1, yFactor:0 },
+          { id:"p5",    xFactor: 2, yFactor:0 },
+          { id:"p6",    xFactor: 3, yFactor:0 },
+          { id:"end",   xFactor: 4, yFactor:0 },
+        ];
+        for (const d of defaults) {
+          const p = state.byId[d.id];
+          if (p) { p.xFactor = d.xFactor; p.yFactor = d.yFactor; }
+        }
+        state.setStartOffsetFraction(0.10);
+        state.setEndOffsetFraction(0.16);
+        startSlider.value = 0.10;
+        endSlider.value = 0.16;
+        startVal.textContent = '0.10';
+        endVal.textContent = '0.16';
+        setLayoutMode('auto');
+        resize();
+      });
+
+      // Apply initial layout mode (restore saved or default to auto)
+      setLayoutMode(saved?.layoutMode || 'auto');
+
+      startAnimationLoop();
     })();
   </script>
 </body>
