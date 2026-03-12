@@ -105,9 +105,13 @@ export function solveIK(root, target, preferredSide, segLen, maxReach, sideToler
 
 /**
  * Compute intermediate points (p1–p6) from center, start, end using IK.
- * Replicates updateIntermediateViaIK() logic with explicit params.
+ * This is the single source of truth — used by both blueprint animation
+ * and visual/unit tests.
+ *
+ * preferRight/preferLeft are optional hysteresis hints for smooth animation.
+ * When omitted (0), the solver picks a side automatically.
  */
-export function computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance) {
+export function computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance, preferRight = 0, preferLeft = 0) {
   const root = { x: center.x, y: center.y };
 
   // Dynamic segment length: proportional to distance, minimum is segLen
@@ -120,14 +124,14 @@ export function computeIntermediatePoints(center, start, end, segLen, maxReach, 
 
   // Right half first: center → p4 → p5 → p6 → end
   const tgtR = { x: end.x, y: end.y };
-  const resR = solveIK(root, tgtR, 0, segLenR, maxReachR, sideTolerance);
+  const resR = solveIK(root, tgtR, preferRight, segLenR, maxReachR, sideTolerance);
   const arcR = resR.arc;
 
   // Left half: center → p3 → p2 → p1 → start (central mirror)
   // Mirror start through center, solve, then mirror result back.
-  // This ensures central symmetry for any start/end configuration.
   const tL   = { x: 2 * root.x - start.x, y: 2 * root.y - start.y };
-  const resL = solveIK(root, tL, resR.preferredSide, segLenL, maxReachL, sideTolerance);
+  const prefL = preferLeft !== 0 ? -preferLeft : resR.preferredSide;
+  const resL = solveIK(root, tL, prefL, segLenL, maxReachL, sideTolerance);
   const arcL = resL.arc.map(p => ({ x: 2 * root.x - p.x, y: 2 * root.y - p.y }));
 
   return {
@@ -137,5 +141,7 @@ export function computeIntermediatePoints(center, start, end, segLen, maxReach, 
     p4: { x: arcR[1].x, y: arcR[1].y },
     p5: { x: arcR[2].x, y: arcR[2].y },
     p6: { x: arcR[3].x, y: arcR[3].y },
+    preferRight: resR.preferredSide,
+    preferLeft: -resL.preferredSide,
   };
 }

@@ -199,6 +199,7 @@
       const summaryEl = document.getElementById("test-summary");
       const resultsEl = document.getElementById("test-results");
       const navEl     = document.getElementById("test-nav");
+      const urlTest   = new URLSearchParams(location.search).get('test');
       let allResults = [];
       let selectedIndex = -1;
 
@@ -245,12 +246,26 @@
 
         const prevBtn = document.createElement("button");
         prevBtn.textContent = "◀";
-        prevBtn.addEventListener("click", () => showTest((selectedIndex - 1 + allResults.length) % allResults.length));
+        prevBtn.addEventListener("click", () => {
+          if (urlTest !== null) {
+            const cur = parseInt(urlTest, 10) - 1;
+            location.search = `?test=${(cur - 1 + testCases.length) % testCases.length + 1}`;
+          } else {
+            showTest((selectedIndex - 1 + allResults.length) % allResults.length);
+          }
+        });
         navEl.appendChild(prevBtn);
 
         const nextBtn = document.createElement("button");
         nextBtn.textContent = "▶";
-        nextBtn.addEventListener("click", () => showTest((selectedIndex + 1) % allResults.length));
+        nextBtn.addEventListener("click", () => {
+          if (urlTest !== null) {
+            const cur = parseInt(urlTest, 10) - 1;
+            location.search = `?test=${(cur + 1) % testCases.length + 1}`;
+          } else {
+            showTest((selectedIndex + 1) % allResults.length);
+          }
+        });
         navEl.appendChild(nextBtn);
 
         navEl.classList.add("visible");
@@ -297,18 +312,63 @@
       }
 
       addEventListener("keydown", (e) => {
-        if (allResults.length === 0) return;
         if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
           e.preventDefault();
-          showTest((selectedIndex - 1 + allResults.length) % allResults.length);
+          if (urlTest !== null) {
+            const cur = parseInt(urlTest, 10) - 1;
+            const next = (cur - 1 + testCases.length) % testCases.length;
+            location.search = `?test=${next + 1}`;
+          } else if (allResults.length > 0) {
+            showTest((selectedIndex - 1 + allResults.length) % allResults.length);
+          }
         } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
           e.preventDefault();
-          showTest((selectedIndex + 1) % allResults.length);
+          if (urlTest !== null) {
+            const cur = parseInt(urlTest, 10) - 1;
+            const next = (cur + 1) % testCases.length;
+            location.search = `?test=${next + 1}`;
+          } else if (allResults.length > 0) {
+            showTest((selectedIndex + 1) % allResults.length);
+          }
         }
       });
 
-      runAllTests();
-      addEventListener("resize", () => runAllTests());
+      // Support ?test=N URL parameter to run/show a single test case (1-based)
+      if (urlTest !== null) {
+        const idx = parseInt(urlTest, 10) - 1;
+        if (idx >= 0 && idx < testCases.length) {
+          // Run single test immediately without delay
+          const result = runTest(idx);
+          const { passed, total, lines } = renderTest(result);
+          allResults = [result];
+          selectedIndex = 0;
+          resultsEl.textContent = lines.join("\n");
+          summaryEl.textContent = `${passed}/${total} checks passed`;
+          summaryEl.style.background = passed === total ? "rgba(0,128,0,.8)" : "rgba(180,0,0,.8)";
+          const titleEl = document.getElementById('test-title');
+          titleEl.textContent = `${idx + 1}/${testCases.length}: ${result.tc.name}`;
+          titleEl.style.display = 'block';
+          titleEl.style.background = passed === total ? "rgba(0,128,0,.8)" : "rgba(180,0,0,.8)";
+          buildNav();
+        } else {
+          runAllTests();
+        }
+      } else {
+        runAllTests();
+      }
+      addEventListener("resize", () => {
+        if (urlTest !== null) {
+          const idx = parseInt(urlTest, 10) - 1;
+          if (idx >= 0 && idx < testCases.length) {
+            const result = runTest(idx);
+            renderTest(result);
+            allResults = [result];
+            selectedIndex = 0;
+            return;
+          }
+        }
+        runAllTests();
+      });
     })();
   </script>
 </body>
