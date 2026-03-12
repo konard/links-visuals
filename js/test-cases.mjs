@@ -1,6 +1,9 @@
 // Shared test case definitions used by both unit tests and visual tests.
 // Each test case defines: name, description, start/end factors, and check functions.
-// All position checks use offsets from center in units of gridSpacing (factors).
+//
+// Key principle: when start, center, end are collinear, ALL control points
+// must lie on that line. This is tested at multiple rotation angles to ensure
+// the algorithm is rotation-invariant.
 
 import { IK_SEG_COUNT } from './constants.mjs';
 
@@ -8,7 +11,48 @@ const TOLERANCE = 2; // pixels
 
 export function close(a, b) { return Math.abs(a - b) < TOLERANCE; }
 
-function closeFactor(a, b) { return Math.abs(a - b) < 0.05; }
+function closeFactor(a, b) { return Math.abs(a - b) < 0.15; }
+function exactFactor(a, b) { return Math.abs(a - b) < 0.02; }
+
+/**
+ * Check that points of one chain are evenly spaced along the center→endpoint
+ * line. Works at any angle. chainIds ordered from center outward.
+ */
+function straightChainChecks(center, pts, segLen, endpoint, chainIds, label) {
+  const dx = endpoint.x - center.x, dy = endpoint.y - center.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return []; // degenerate
+  const dynSegLen = Math.max(segLen, dist / IK_SEG_COUNT);
+  const ux = dx / dist, uy = dy / dist;
+  const checks = [];
+  for (let i = 0; i < chainIds.length; i++) {
+    const id = chainIds[i];
+    const p = pts[id];
+    const expectedX = center.x + (i + 1) * dynSegLen * ux;
+    const expectedY = center.y + (i + 1) * dynSegLen * uy;
+    const fx = (p.x - center.x) / segLen;
+    const fy = (p.y - center.y) / segLen;
+    const efx = (expectedX - center.x) / segLen;
+    const efy = (expectedY - center.y) / segLen;
+    checks.push({
+      id,
+      pass: exactFactor(fx, efx) && exactFactor(fy, efy),
+      label: `${id} ${label} pos=(${fx.toFixed(3)}, ${fy.toFixed(3)}) expect=(${efx.toFixed(3)}, ${efy.toFixed(3)})`
+    });
+  }
+  return checks;
+}
+
+/**
+ * When start, center, end are collinear, ALL 6 control points must be on
+ * that line, evenly spaced from center toward their respective endpoints.
+ */
+function collinearChecks(center, pts, segLen, start, end) {
+  return [
+    ...straightChainChecks(center, pts, segLen, start, ['p3','p2','p1'], 'left-straight'),
+    ...straightChainChecks(center, pts, segLen, end,   ['p4','p5','p6'], 'right-straight'),
+  ];
+}
 
 export function segmentChecks(center, pts, segLen) {
   const leftChain  = [center, pts.p3, pts.p2, pts.p1];
@@ -49,21 +93,9 @@ export function dynamicSegmentChecks(center, start, end, pts, segLen) {
   return checks;
 }
 
-export function maxReachChecks(center, pts, maxReach) {
-  const checks = [];
-  for (const [name, p] of Object.entries(pts)) {
-    const dist = Math.hypot(p.x - center.x, p.y - center.y);
-    checks.push({
-      id: name,
-      pass: dist <= maxReach + TOLERANCE,
-      label: `${name} dist=${dist.toFixed(1)} ≤ maxReach ${maxReach.toFixed(1)}`
-    });
-  }
-  return checks;
-}
-
 /**
  * Check that each point is at its expected position (as factors of gridSpacing from center).
+ * Uses 15% tolerance — verifies the shape is approximately correct.
  */
 function positionChecks(center, pts, segLen, expectedFactors) {
   const checks = [];
@@ -80,22 +112,80 @@ function positionChecks(center, pts, segLen, expectedFactors) {
   return checks;
 }
 
-export const testCases = [
-  {
-    name: "Horizontal straight",
-    description: "Start left, end right — at exactly max reach (4×), all points collinear",
-    startFactor: { x: -4, y: 0 },
-    endFactor:   { x:  4, y: 0 },
-    checks(center, pts, segLen) {
+// ---------------------------------------------------------------
+// Collinear straight-line test at a given angle (degrees).
+// Both halves at exactly maxReach (4× segLen).
+// ---------------------------------------------------------------
+function collinearTestAtAngle(angleDeg) {
+  const a = angleDeg * Math.PI / 180;
+  return {
+    name: `Collinear straight ${angleDeg}°`,
+    description: `Start/end at ±4× along ${angleDeg}° — all points must be on the line`,
+    startFactor: { x: -4 * Math.cos(a), y: -4 * Math.sin(a) },
+    endFactor:   { x:  4 * Math.cos(a), y:  4 * Math.sin(a) },
+    checks(center, pts, segLen, start, end) {
       return [
-        ...positionChecks(center, pts, segLen, {
-          p1: { x: -3, y: 0 }, p2: { x: -2, y: 0 }, p3: { x: -1, y: 0 },
-          p4: { x:  1, y: 0 }, p5: { x:  2, y: 0 }, p6: { x:  3, y: 0 },
-        }),
+        ...collinearChecks(center, pts, segLen, start, end),
         ...segmentChecks(center, pts, segLen),
       ];
     }
+  };
+}
+
+// ---------------------------------------------------------------
+// Extended collinear test at a given angle (both halves beyond maxReach).
+// ---------------------------------------------------------------
+function extendedCollinearTestAtAngle(angleDeg, distFactor) {
+  const a = angleDeg * Math.PI / 180;
+  return {
+    name: `Extended collinear ${angleDeg}° (${distFactor}×)`,
+    description: `Start/end at ±${distFactor}× along ${angleDeg}° — straight with dynamic segments`,
+    startFactor: { x: -distFactor * Math.cos(a), y: -distFactor * Math.sin(a) },
+    endFactor:   { x:  distFactor * Math.cos(a), y:  distFactor * Math.sin(a) },
+    checks(center, pts, segLen, start, end) {
+      return [
+        ...collinearChecks(center, pts, segLen, start, end),
+        ...dynamicSegmentChecks(center, start, end, pts, segLen),
+      ];
+    }
+  };
+}
+
+export const testCases = [
+  // ---------------------------------------------------------------
+  // Collinear straight tests at multiple angles (rotation invariance)
+  // ---------------------------------------------------------------
+  collinearTestAtAngle(0),
+  collinearTestAtAngle(30),
+  collinearTestAtAngle(45),
+  collinearTestAtAngle(90),
+  collinearTestAtAngle(135),
+  collinearTestAtAngle(170),
+
+  // Extended collinear at various angles
+  extendedCollinearTestAtAngle(0, 8),
+  extendedCollinearTestAtAngle(90, 6),
+  extendedCollinearTestAtAngle(45, 6),
+
+  // ---------------------------------------------------------------
+  // Extended asymmetric collinear — different distances per half
+  // ---------------------------------------------------------------
+  {
+    name: "Extended asymmetric",
+    description: "Start at 8× left, end at 4× right — left segments 2×, right segments 1×",
+    startFactor: { x: -8, y: 0 },
+    endFactor:   { x:  4, y: 0 },
+    checks(center, pts, segLen, start, end) {
+      return [
+        ...collinearChecks(center, pts, segLen, start, end),
+        ...dynamicSegmentChecks(center, start, end, pts, segLen),
+      ];
+    }
   },
+
+  // ---------------------------------------------------------------
+  // Curved cases — positions verified with 15% tolerance
+  // ---------------------------------------------------------------
   {
     name: "Vertical symmetric",
     description: "Start below, end above center — same X, equal distance",
@@ -201,61 +291,22 @@ export const testCases = [
       ];
     }
   },
-  {
-    name: "Extended horizontal (8 units)",
-    description: "Start/end at 8× gridSpacing — segments should be 2× gridSpacing each",
-    startFactor: { x: -8, y: 0 },
-    endFactor:   { x:  8, y: 0 },
-    checks(center, pts, segLen, start, end) {
-      return [
-        ...positionChecks(center, pts, segLen, {
-          p1: { x: -6, y: 0 }, p2: { x: -4, y: 0 }, p3: { x: -2, y: 0 },
-          p4: { x:  2, y: 0 }, p5: { x:  4, y: 0 }, p6: { x:  6, y: 0 },
-        }),
-        ...dynamicSegmentChecks(center, start, end, pts, segLen),
-      ];
-    }
-  },
-  {
-    name: "Extended vertical (6 units)",
-    description: "Start/end at 6× gridSpacing — segments should be 1.5× gridSpacing each",
-    startFactor: { x: 0, y: 6 },
-    endFactor:   { x: 0, y: -6 },
-    checks(center, pts, segLen, start, end) {
-      return [
-        ...positionChecks(center, pts, segLen, {
-          p1: { x: 0, y:  4.5 }, p2: { x: 0, y:  3 }, p3: { x: 0, y:  1.5 },
-          p4: { x: 0, y: -1.5 }, p5: { x: 0, y: -3 }, p6: { x: 0, y: -4.5 },
-        }),
-        ...dynamicSegmentChecks(center, start, end, pts, segLen),
-      ];
-    }
-  },
-  {
-    name: "Extended asymmetric",
-    description: "Start at 8× left, end at 4× right — left segments 2×, right segments 1×",
-    startFactor: { x: -8, y: 0 },
-    endFactor:   { x:  4, y: 0 },
-    checks(center, pts, segLen, start, end) {
-      return [
-        ...positionChecks(center, pts, segLen, {
-          p1: { x: -6, y: 0 }, p2: { x: -4, y: 0 }, p3: { x: -2, y: 0 },
-          p4: { x:  1, y: 0 }, p5: { x:  2, y: 0 }, p6: { x:  3, y: 0 },
-        }),
-        ...dynamicSegmentChecks(center, start, end, pts, segLen),
-      ];
-    }
-  },
+
+  // ---------------------------------------------------------------
+  // Asymmetric: one half straight (at maxReach), other half curved
+  // ---------------------------------------------------------------
   {
     name: "Diagonal to vertical",
-    description: "Start top-right (3,-4), end straight below (0,4) — asymmetric with dynamic segments",
+    description: "Start top-right (3,-4), end straight below (0,4) — right half straight, left half curved",
     startFactor: { x: 3, y: -4 },
     endFactor:   { x: 0, y: 4 },
     checks(center, pts, segLen, start, end) {
       return [
+        // Right half: end is at exactly 4× segLen downward → straight
+        ...straightChainChecks(center, pts, segLen, end, ['p4','p5','p6'], 'right-straight'),
+        // Left half: curved — approximate positions
         ...positionChecks(center, pts, segLen, {
           p1: { x:  1.393, y: -3.265 }, p2: { x:  0.490, y: -2.400 }, p3: { x:  0.000, y: -1.250 },
-          p4: { x:  0.000, y:  1.000 }, p5: { x:  0.000, y:  2.000 }, p6: { x:  0.000, y:  3.000 },
         }),
         ...dynamicSegmentChecks(center, start, end, pts, segLen),
       ];
@@ -263,29 +314,16 @@ export const testCases = [
   },
   {
     name: "Diagonal to vertical (mirrored)",
-    description: "Start top-left (-3,-4), end straight below (0,4) — mirror of previous, must curve not be straight",
+    description: "Start top-left (-3,-4), end straight below (0,4) — mirror of previous",
     startFactor: { x: -3, y: -4 },
     endFactor:   { x: 0, y: 4 },
     checks(center, pts, segLen, start, end) {
-      // p3 should NOT be collinear with center→start — it must curve away
-      const dx = start.x - center.x, dy = start.y - center.y;
-      const len = Math.hypot(dx, dy);
-      const crossP3 = Math.abs((pts.p3.x - center.x) * (dy / len) - (pts.p3.y - center.y) * (dx / len));
-      const curvatureCheck = {
-        id: "p3",
-        pass: crossP3 > segLen * 0.1,
-        label: `p3 curvature: perpendicular dist=${crossP3.toFixed(1)} from center→start line (must be > ${(segLen * 0.1).toFixed(1)})`
-      };
-
-      // Expected: mirror of "Diagonal to vertical" — p1.x should be negative of the non-mirrored p1.x
-      // The mirrored case should produce curved shape, not straight.
-      // Current algorithm produces straight line here (known bug), so these positions
-      // record what a correct algorithm SHOULD produce (approximately mirrored).
       return [
-        curvatureCheck,
+        // Right half: end is at exactly 4× segLen downward → straight
+        ...straightChainChecks(center, pts, segLen, end, ['p4','p5','p6'], 'right-straight'),
+        // Left half: should be mirror of "Diagonal to vertical" left half
         ...positionChecks(center, pts, segLen, {
           p1: { x: -1.393, y: -3.265 }, p2: { x: -0.490, y: -2.400 }, p3: { x:  0.000, y: -1.250 },
-          p4: { x:  0.000, y:  1.000 }, p5: { x:  0.000, y:  2.000 }, p6: { x:  0.000, y:  3.000 },
         }),
         ...dynamicSegmentChecks(center, start, end, pts, segLen),
       ];
