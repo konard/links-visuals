@@ -24,42 +24,42 @@ function assertClose(actual, expected, msg) {
 }
 
 describe('IK symmetry — shared test cases', () => {
-  const cx = 640, cy = 418;
+  const centerX = 640, centerY = 418;
   const gridSpacing = 125;
-  const segLen = gridSpacing;
-  const maxReach = IK_SEG_COUNT * segLen;
+  const segmentLength = gridSpacing;
+  const maximumReach = IK_SEG_COUNT * segmentLength;
   const sideTolerance = 0.001 * gridSpacing;
-  const center = { x: cx, y: cy };
+  const center = { x: centerX, y: centerY };
 
-  for (const tc of testCases) {
-    it(`${tc.name}: all checks pass`, () => {
-      const start = { x: cx + tc.startFactor.x * gridSpacing, y: cy + tc.startFactor.y * gridSpacing };
-      const end   = { x: cx + tc.endFactor.x * gridSpacing,   y: cy + tc.endFactor.y * gridSpacing };
+  for (const testCase of testCases) {
+    it(`${testCase.name}: all checks pass`, () => {
+      const start = { x: centerX + testCase.startFactor.x * gridSpacing, y: centerY + testCase.startFactor.y * gridSpacing };
+      const end   = { x: centerX + testCase.endFactor.x * gridSpacing,   y: centerY + testCase.endFactor.y * gridSpacing };
 
-      const pts = computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance);
-      const checks = tc.checks(center, pts, segLen, start, end);
+      const points = computeIntermediatePoints(center, start, end, segmentLength, maximumReach, sideTolerance);
+      const checks = testCase.checks(center, points, segmentLength, start, end);
 
-      for (const c of checks) {
-        assert.ok(c.pass, `${tc.name} — ${c.label}`);
+      for (const check of checks) {
+        assert.ok(check.pass, `${testCase.name} — ${check.label}`);
       }
     });
   }
 
-  it('all intermediate points lie within dynamic maxReach of center', () => {
-    for (const tc of testCases) {
-      const start = { x: cx + tc.startFactor.x * gridSpacing, y: cy + tc.startFactor.y * gridSpacing };
-      const end   = { x: cx + tc.endFactor.x * gridSpacing,   y: cy + tc.endFactor.y * gridSpacing };
-      const pts = computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance);
+  it('all intermediate points lie within dynamic maximumReach of center', () => {
+    for (const testCase of testCases) {
+      const start = { x: centerX + testCase.startFactor.x * gridSpacing, y: centerY + testCase.startFactor.y * gridSpacing };
+      const end   = { x: centerX + testCase.endFactor.x * gridSpacing,   y: centerY + testCase.endFactor.y * gridSpacing };
+      const points = computeIntermediatePoints(center, start, end, segmentLength, maximumReach, sideTolerance);
 
-      const distL = Math.hypot(start.x - cx, start.y - cy);
-      const distR = Math.hypot(end.x - cx, end.y - cy);
-      const dynMaxReach = Math.max(maxReach, distL, distR);
+      const distanceLeft = Math.hypot(start.x - centerX, start.y - centerY);
+      const distanceRight = Math.hypot(end.x - centerX, end.y - centerY);
+      const dynamicMaximumReach = Math.max(maximumReach, distanceLeft, distanceRight);
 
-      for (const [name, p] of Object.entries(pts)) {
-        if (typeof p !== 'object' || p === null) continue;
-        const dist = Math.hypot(p.x - cx, p.y - cy);
-        assert.ok(dist <= dynMaxReach + TOLERANCE,
-          `${tc.name} — ${name} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is ${dist.toFixed(1)} from center, exceeds dynMaxReach ${dynMaxReach}`);
+      for (const [name, point] of Object.entries(points)) {
+        if (typeof point !== 'object' || point === null) continue;
+        const distance = Math.hypot(point.x - centerX, point.y - centerY);
+        assert.ok(distance <= dynamicMaximumReach + TOLERANCE,
+          `${testCase.name} — ${name} at (${point.x.toFixed(1)}, ${point.y.toFixed(1)}) is ${distance.toFixed(1)} from center, exceeds dynamicMaximumReach ${dynamicMaximumReach}`);
       }
     }
   });

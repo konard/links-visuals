@@ -81,16 +81,16 @@
       function setupViewport() {
         state.setWidth(innerWidth);
         state.setHeight(innerHeight);
-        state.setCx(state.width  / 2);
-        state.setCy(state.height / 2);
-        state.setGridSpacing(state.cx * (1 - paddingFraction) / 4);
+        state.setCenterX(state.width  / 2);
+        state.setCenterY(state.height / 2);
+        state.setGridSpacing(state.centerX * (1 - paddingFraction) / 4);
         state.setHalfSpacing(state.gridSpacing / 2);
         state.setSnapThreshold(snapFraction  * state.gridSpacing);
         state.setCircleRadius(radiusFraction * state.gridSpacing);
-        state.setSegLen(state.gridSpacing);
-        state.setMaxReach(IK_SEG_COUNT * state.gridSpacing);
+        state.setSegmentLength(state.gridSpacing);
+        state.setMaximumReach(IK_SEG_COUNT * state.gridSpacing);
         state.setSideTolerance(sideTolFraction * state.gridSpacing);
-        state.svg.attr("width", state.width).attr("height", state.height);
+        state.svgSelection.attr("width", state.width).attr("height", state.height);
         drawGrid();
         initMarkers();
       }
@@ -106,11 +106,11 @@
         const maxReach = IK_SEG_COUNT * segLen;
         const sideTolerance = sideTolFraction * segLen;
 
-        const center  = { x: state.cx, y: state.cy };
-        const startPt = { x: state.cx + tc.startFactor.x * state.gridSpacing,
-                          y: state.cy + tc.startFactor.y * state.gridSpacing };
-        const endPt   = { x: state.cx + tc.endFactor.x * state.gridSpacing,
-                          y: state.cy + tc.endFactor.y * state.gridSpacing };
+        const center  = { x: state.centerX, y: state.centerY };
+        const startPt = { x: state.centerX + tc.startFactor.x * state.gridSpacing,
+                          y: state.centerY + tc.startFactor.y * state.gridSpacing };
+        const endPt   = { x: state.centerX + tc.endFactor.x * state.gridSpacing,
+                          y: state.centerY + tc.endFactor.y * state.gridSpacing };
 
         // Compute IK using shared pure solver
         const ik = computeIntermediatePoints(center, startPt, endPt, segLen, maxReach, sideTolerance);
@@ -148,11 +148,11 @@
       function renderTest(result) {
         const { tc, checks, pointStatus } = result;
 
-        state.svg.selectAll("circle.control").remove();
+        state.svgSelection.selectAll("circle.control").remove();
         if (state.mainPath) state.mainPath.remove();
 
         state.setMainPath(
-          state.svg.append("path")
+          state.svgSelection.append("path")
             .attr("fill", "none")
             .attr("stroke", "black")
             .attr("stroke-width", strokeFraction * state.gridSpacing)
@@ -161,7 +161,7 @@
         );
 
         state.setCircles(
-          state.svg.selectAll("circle.control")
+          state.svgSelection.selectAll("circle.control")
             .data(state.points, d => d.id)
             .enter()
             .append("circle")

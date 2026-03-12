@@ -5,20 +5,20 @@ import { initCanvasElementEvents } from './zoom-pan.mjs';
 
 export function setRenderMode(mode) {
   state.setRenderModeState(mode);
-  const renderSVGBtn    = document.getElementById("renderSVGBtn");
-  const renderCanvasBtn = document.getElementById("renderCanvasBtn");
-  const canvasEl        = document.getElementById("render-canvas");
+  const renderSVGButton    = document.getElementById("renderSVGBtn");
+  const renderCanvasButton = document.getElementById("renderCanvasBtn");
+  const canvasElement      = document.getElementById("render-canvas");
 
   if (mode === 'svg') {
-    state.svgEl.style.display  = 'block';
-    canvasEl.style.display     = 'none';
-    renderSVGBtn.classList.add('active');
-    renderCanvasBtn.classList.remove('active');
+    state.svgElement.style.display  = 'block';
+    canvasElement.style.display     = 'none';
+    renderSVGButton.classList.add('active');
+    renderCanvasButton.classList.remove('active');
   } else {
-    state.svgEl.style.display  = 'none';
-    canvasEl.style.display     = 'block';
-    renderSVGBtn.classList.remove('active');
-    renderCanvasBtn.classList.add('active');
-    initCanvasElementEvents(canvasEl);
+    state.svgElement.style.display  = 'none';
+    canvasElement.style.display     = 'block';
+    renderSVGButton.classList.remove('active');
+    renderCanvasButton.classList.add('active');
+    initCanvasElementEvents(canvasElement);
   }
 }

@@ -41,8 +41,8 @@ describe(
         const context = await browser.newContext();
         page = await context.newPage();
         commander = createCommander({ page, verbose: false });
-      } catch (err) {
-        console.error('Could not start browser:', err.message);
+      } catch (error) {
+        console.error('Could not start browser:', error.message);
       }
     });
 
@@ -57,7 +57,7 @@ describe(
       it('navigates to animated-blueprint.html without errors', async () => {
         if (!commander) return;
         const errors = [];
-        page.on('pageerror', e => errors.push(e.message));
+        page.on('pageerror', error => errors.push(error.message));
         await commander.goto({ url: PAGE_URL });
         // Allow async module loading to complete
         await page.waitForTimeout(3000);
@@ -165,10 +165,10 @@ describe(
       it('shows the config panel', async () => {
         if (!commander) return;
         const visible = await page.evaluate(() => {
-          const el = document.getElementById('config-panel');
-          if (!el) return false;
-          const s = window.getComputedStyle(el);
-          return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+          const element = document.getElementById('config-panel');
+          if (!element) return false;
+          const style = window.getComputedStyle(element);
+          return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
         });
         assert.ok(visible, 'Config panel should be visible');
       });
@@ -209,9 +209,9 @@ describe(
         if (!commander) return;
         await page.click('#renderCanvasBtn');
         const style = await page.evaluate(() => {
-          const el = document.getElementById('config-panel');
-          const s  = window.getComputedStyle(el);
-          return { display: s.display, opacity: s.opacity };
+          const element = document.getElementById('config-panel');
+          const computed = window.getComputedStyle(element);
+          return { display: computed.display, opacity: computed.opacity };
         });
         assert.strictEqual(style.display, 'block', 'Config panel display should be block');
         assert.strictEqual(style.opacity, '1', 'Config panel opacity should be 1');
@@ -274,8 +274,8 @@ describe(
 
         // Get initial position of the start circle
         const { x, y } = await page.evaluate(() => {
-          const c = document.querySelector('circle.start');
-          return { x: parseFloat(c.getAttribute('cx')), y: parseFloat(c.getAttribute('cy')) };
+          const circle = document.querySelector('circle.start');
+          return { x: parseFloat(circle.getAttribute('cx')), y: parseFloat(circle.getAttribute('cy')) };
         });
 
         // Simulate a small drag: mouse down → move → up
@@ -287,10 +287,10 @@ describe(
 
         // After a drag, the start point should have moved
         const { newX, newY } = await page.evaluate(() => {
-          const c = document.querySelector('circle.start');
+          const circle = document.querySelector('circle.start');
           return {
-            newX: parseFloat(c.getAttribute('cx')),
-            newY: parseFloat(c.getAttribute('cy')),
+            newX: parseFloat(circle.getAttribute('cx')),
+            newY: parseFloat(circle.getAttribute('cy')),
           };
         });
         const moved = Math.hypot(newX - x, newY - y) > 1;

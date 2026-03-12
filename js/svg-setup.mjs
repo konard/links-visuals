@@ -14,38 +14,38 @@ let _d3 = null;
 export function setD3(d3) { _d3 = d3; }
 
 export function initSVG() {
-  const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  const svg = _d3.select("body").append(() => svgEl);
+  const element   = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const selection = _d3.select("body").append(() => element);
 
-  // overflow:visible allows the grid pattern rect (which extends ±1e6 in SVG
+  // overflow:visible allows the grid pattern rect (which extends +/-1e6 in SVG
   // user space) to paint beyond the SVG element's width/height boundary.
   // Without this, the outermost SVG element defaults to overflow:hidden (per
-  // SVG spec §14.3.3), which clips the grid to the SVG viewport before the
+  // SVG spec 14.3.3), which clips the grid to the SVG viewport before the
   // CSS pan/zoom transform is applied — making the grid appear finite.
-  svg.attr("overflow", "visible");
+  selection.attr("overflow", "visible");
 
   // pointer-events:all ensures the SVG element receives wheel/mouse/touch
   // events everywhere on the infinite grid, not just where painted content
   // (path, circles) exists. The default SVG pointer-events value is
   // "visiblePainted", which only fires events over painted pixels — leaving
   // the empty space between grid lines unresponsive to zoom/pan gestures.
-  svg.style("pointer-events", "all");
+  selection.style("pointer-events", "all");
 
   // defs for markers
-  svg.append("defs");
+  selection.append("defs");
 
-  const gridGroup = svg.insert("g", ":first-child").attr("class", "grid");
+  const gridGroup = selection.insert("g", ":first-child").attr("class", "grid");
 
-  state.setSvgEl(svgEl);
-  state.setSvg(svg);
+  state.setSvgElement(element);
+  state.setSvgSelection(selection);
   state.setGridGroup(gridGroup);
 }
 
 export function applyCanvasTransform() {
   // CSS transform on the SVG element — keeps markers crisp and correctly sized.
-  state.svg.style("transform",
+  state.svgSelection.style("transform",
     `translate(${state.canvasOffsetX}px, ${state.canvasOffsetY}px) scale(${state.canvasScale})`);
-  state.svg.style("transform-origin", "0 0");
+  state.svgSelection.style("transform-origin", "0 0");
 }
 
 export function screenToWorld(clientX, clientY) {

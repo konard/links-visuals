@@ -35,8 +35,8 @@ describe(
         });
         const context = await browser.newContext();
         page = await context.newPage();
-      } catch (err) {
-        console.error('Could not start browser:', err.message);
+      } catch (error) {
+        console.error('Could not start browser:', error.message);
       }
     });
 
@@ -51,7 +51,7 @@ describe(
       it('navigates to blueprint.html without errors', async () => {
         if (!page) return;
         const errors = [];
-        page.on('pageerror', e => errors.push(e.message));
+        page.on('pageerror', error => errors.push(error.message));
         await page.goto(PAGE_URL);
         await page.waitForTimeout(3000);
         assert.strictEqual(errors.length, 0, `Page errors: ${errors.join('; ')}`);

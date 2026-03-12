@@ -196,8 +196,8 @@
               const clientY = src.clientY !== undefined ? src.clientY
                             : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
               const wpt  = screenToWorld(clientX, clientY);
-              const nx   = state.cx + Math.round((wpt.x - state.cx) / state.halfSpacing) * state.halfSpacing;
-              const ny   = state.cy + Math.round((wpt.y - state.cy) / state.halfSpacing) * state.halfSpacing;
+              const nx   = state.centerX + Math.round((wpt.x - state.centerX) / state.halfSpacing) * state.halfSpacing;
+              const ny   = state.centerY + Math.round((wpt.y - state.centerY) / state.halfSpacing) * state.halfSpacing;
               const dist = Math.hypot(wpt.x - nx, wpt.y - ny);
               d.x = dist < state.snapThreshold ? nx : wpt.x;
               d.y = dist < state.snapThreshold ? ny : wpt.y;
@@ -205,8 +205,8 @@
               updatePath();
             })
             .on('end', function(ev, d) {
-              d.xFactor = (d.x - state.cx) / state.gridSpacing;
-              d.yFactor = (d.y - state.cy) / state.gridSpacing;
+              d.xFactor = (d.x - state.centerX) / state.gridSpacing;
+              d.yFactor = (d.y - state.centerY) / state.gridSpacing;
               d3.select(this).attr('stroke-dasharray', '4 2');
               updatePath();
               saveSettings();

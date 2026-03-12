@@ -4,73 +4,73 @@
 
 import * as state from './state.mjs';
 import { strokeFraction } from './constants.mjs';
-import { vecAdd, vecSub, vecScale, offsetPoint } from './geometry.mjs';
+import { vectorAdd, vectorSubtract, vectorScale, offsetPoint } from './geometry.mjs';
 
 // drawCrossMarker — draws the cross-hair tick at the path start on canvas.
 // Replicates the SVG marker with viewBox="0 0 100 100", markerWidth=100,
 // markerUnits="strokeWidth": the marker box is 100 × strokeWidth.
-function drawCrossMarker(ctx, x, y, angle, markerBox) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
+function drawCrossMarker(context, positionX, positionY, angle, markerBox) {
+  context.save();
+  context.translate(positionX, positionY);
+  context.rotate(angle);
   // Map viewBox (0-100) to marker box (0-markerBox), with refX=50, refY=50 offset
   const scale = markerBox / 100;
-  const ox = -50 * scale;
-  const oy = -50 * scale;
+  const offsetX = -50 * scale;
+  const offsetY = -50 * scale;
 
-  const lineX = (62.5 - (12.5 - 12.5/1.618)) * scale + ox;
-  const y1 = (25 + 14.5 - 0.23) * scale + oy;
-  const y2 = (75 - 14.5 + 0.23) * scale + oy;
+  const lineX = (62.5 - (12.5 - 12.5/1.618)) * scale + offsetX;
+  const lineY1 = (25 + 14.5 - 0.23) * scale + offsetY;
+  const lineY2 = (75 - 14.5 + 0.23) * scale + offsetY;
 
-  ctx.strokeStyle = "black";
-  ctx.lineWidth   = 1 * scale; // default SVG stroke-width is 1 in viewBox units
-  ctx.beginPath();
-  ctx.moveTo(lineX, y1);
-  ctx.lineTo(lineX, y2);
-  ctx.stroke();
-  ctx.restore();
+  context.strokeStyle = "black";
+  context.lineWidth   = 1 * scale; // default SVG stroke-width is 1 in viewBox units
+  context.beginPath();
+  context.moveTo(lineX, lineY1);
+  context.lineTo(lineX, lineY2);
+  context.stroke();
+  context.restore();
 }
 
 // drawArrowMarker — draws the double-arm arrowhead at the path end on canvas.
-function drawArrowMarker(ctx, x, y, angle, markerBox) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
+function drawArrowMarker(context, positionX, positionY, angle, markerBox) {
+  context.save();
+  context.translate(positionX, positionY);
+  context.rotate(angle);
   const scale = markerBox / 100;
-  const ox = -10 * scale; // refX=10
-  const oy = -50 * scale; // refY=50
+  const offsetX = -10 * scale; // refX=10
+  const offsetY = -50 * scale; // refY=50
 
-  ctx.strokeStyle = "black";
-  ctx.lineWidth   = 1 * scale;
+  context.strokeStyle = "black";
+  context.lineWidth   = 1 * scale;
 
   // Upper arm: (10.35, 50.35) → (−0.35, 39.65)
-  ctx.beginPath();
-  ctx.moveTo((10 + 0.35) * scale + ox, (50 + 0.35) * scale + oy);
-  ctx.lineTo((0  - 0.35) * scale + ox, (40 - 0.35) * scale + oy);
-  ctx.stroke();
+  context.beginPath();
+  context.moveTo((10 + 0.35) * scale + offsetX, (50 + 0.35) * scale + offsetY);
+  context.lineTo((0  - 0.35) * scale + offsetX, (40 - 0.35) * scale + offsetY);
+  context.stroke();
 
   // Lower arm: (10.35, 49.65) → (−0.35, 60.35)
-  ctx.beginPath();
-  ctx.moveTo((10 + 0.35) * scale + ox, (50 - 0.35) * scale + oy);
-  ctx.lineTo((0  - 0.35) * scale + ox, (60 + 0.35) * scale + oy);
-  ctx.stroke();
+  context.beginPath();
+  context.moveTo((10 + 0.35) * scale + offsetX, (50 - 0.35) * scale + offsetY);
+  context.lineTo((0  - 0.35) * scale + offsetX, (60 + 0.35) * scale + offsetY);
+  context.stroke();
 
-  ctx.restore();
+  context.restore();
 }
 
 export function drawSceneOnCanvas() {
-  const canvasEl = document.getElementById("render-canvas");
-  const ctx      = canvasEl.getContext("2d");
+  const canvasElement = document.getElementById("render-canvas");
+  const context       = canvasElement.getContext("2d");
 
-  ctx.clearRect(0, 0, state.width, state.height);
+  context.clearRect(0, 0, state.width, state.height);
 
   // Background fill
-  ctx.fillStyle = "#E0F7FA";
-  ctx.fillRect(0, 0, state.width, state.height);
+  context.fillStyle = "#E0F7FA";
+  context.fillRect(0, 0, state.width, state.height);
 
-  ctx.save();
-  ctx.translate(state.canvasOffsetX, state.canvasOffsetY);
-  ctx.scale(state.canvasScale, state.canvasScale);
+  context.save();
+  context.translate(state.canvasOffsetX, state.canvasOffsetY);
+  context.scale(state.canvasScale, state.canvasScale);
 
   // Compute world-space bounds of the visible viewport
   const worldLeft   = (0             - state.canvasOffsetX) / state.canvasScale;
@@ -79,112 +79,112 @@ export function drawSceneOnCanvas() {
   const worldBottom = (state.height  - state.canvasOffsetY) / state.canvasScale;
 
   // Minor grid — draw only visible lines
-  const firstMinorX = state.cx + Math.floor((worldLeft  - state.cx) / state.halfSpacing) * state.halfSpacing;
-  const firstMinorY = state.cy + Math.floor((worldTop    - state.cy) / state.halfSpacing) * state.halfSpacing;
-  ctx.strokeStyle = "rgba(255,255,255,0.5)";
-  ctx.lineWidth   = 0.5 / state.canvasScale;
+  const firstMinorX = state.centerX + Math.floor((worldLeft  - state.centerX) / state.halfSpacing) * state.halfSpacing;
+  const firstMinorY = state.centerY + Math.floor((worldTop    - state.centerY) / state.halfSpacing) * state.halfSpacing;
+  context.strokeStyle = "rgba(255,255,255,0.5)";
+  context.lineWidth   = 0.5 / state.canvasScale;
 
-  for (let x = firstMinorX; x <= worldRight + state.halfSpacing; x += state.halfSpacing) {
-    if (Math.abs(((x - state.cx) % state.gridSpacing + state.gridSpacing) % state.gridSpacing) > 0.1 &&
-        Math.abs(((x - state.cx) % state.gridSpacing + state.gridSpacing) % state.gridSpacing - state.gridSpacing) > 0.1) {
-      ctx.beginPath();
-      ctx.moveTo(x, worldTop    - state.halfSpacing);
-      ctx.lineTo(x, worldBottom + state.halfSpacing);
-      ctx.stroke();
+  for (let gridX = firstMinorX; gridX <= worldRight + state.halfSpacing; gridX += state.halfSpacing) {
+    if (Math.abs(((gridX - state.centerX) % state.gridSpacing + state.gridSpacing) % state.gridSpacing) > 0.1 &&
+        Math.abs(((gridX - state.centerX) % state.gridSpacing + state.gridSpacing) % state.gridSpacing - state.gridSpacing) > 0.1) {
+      context.beginPath();
+      context.moveTo(gridX, worldTop    - state.halfSpacing);
+      context.lineTo(gridX, worldBottom + state.halfSpacing);
+      context.stroke();
     }
   }
-  for (let y = firstMinorY; y <= worldBottom + state.halfSpacing; y += state.halfSpacing) {
-    if (Math.abs(((y - state.cy) % state.gridSpacing + state.gridSpacing) % state.gridSpacing) > 0.1 &&
-        Math.abs(((y - state.cy) % state.gridSpacing + state.gridSpacing) % state.gridSpacing - state.gridSpacing) > 0.1) {
-      ctx.beginPath();
-      ctx.moveTo(worldLeft  - state.halfSpacing, y);
-      ctx.lineTo(worldRight + state.halfSpacing, y);
-      ctx.stroke();
+  for (let gridY = firstMinorY; gridY <= worldBottom + state.halfSpacing; gridY += state.halfSpacing) {
+    if (Math.abs(((gridY - state.centerY) % state.gridSpacing + state.gridSpacing) % state.gridSpacing) > 0.1 &&
+        Math.abs(((gridY - state.centerY) % state.gridSpacing + state.gridSpacing) % state.gridSpacing - state.gridSpacing) > 0.1) {
+      context.beginPath();
+      context.moveTo(worldLeft  - state.halfSpacing, gridY);
+      context.lineTo(worldRight + state.halfSpacing, gridY);
+      context.stroke();
     }
   }
 
   // Major grid
-  const firstMajorX = state.cx + Math.floor((worldLeft - state.cx) / state.gridSpacing) * state.gridSpacing;
-  const firstMajorY = state.cy + Math.floor((worldTop  - state.cy) / state.gridSpacing) * state.gridSpacing;
-  ctx.strokeStyle = "rgba(255,255,255,0.8)";
-  ctx.lineWidth   = 1 / state.canvasScale;
+  const firstMajorX = state.centerX + Math.floor((worldLeft - state.centerX) / state.gridSpacing) * state.gridSpacing;
+  const firstMajorY = state.centerY + Math.floor((worldTop  - state.centerY) / state.gridSpacing) * state.gridSpacing;
+  context.strokeStyle = "rgba(255,255,255,0.8)";
+  context.lineWidth   = 1 / state.canvasScale;
 
-  for (let x = firstMajorX; x <= worldRight + state.gridSpacing; x += state.gridSpacing) {
-    ctx.beginPath();
-    ctx.moveTo(x, worldTop    - state.gridSpacing);
-    ctx.lineTo(x, worldBottom + state.gridSpacing);
-    ctx.stroke();
+  for (let gridX = firstMajorX; gridX <= worldRight + state.gridSpacing; gridX += state.gridSpacing) {
+    context.beginPath();
+    context.moveTo(gridX, worldTop    - state.gridSpacing);
+    context.lineTo(gridX, worldBottom + state.gridSpacing);
+    context.stroke();
   }
-  for (let y = firstMajorY; y <= worldBottom + state.gridSpacing; y += state.gridSpacing) {
-    ctx.beginPath();
-    ctx.moveTo(worldLeft  - state.gridSpacing, y);
-    ctx.lineTo(worldRight + state.gridSpacing, y);
-    ctx.stroke();
+  for (let gridY = firstMajorY; gridY <= worldBottom + state.gridSpacing; gridY += state.gridSpacing) {
+    context.beginPath();
+    context.moveTo(worldLeft  - state.gridSpacing, gridY);
+    context.lineTo(worldRight + state.gridSpacing, gridY);
+    context.stroke();
   }
 
   // Spline path
   const last        = state.points.length - 1;
   const startOffset = state.startOffsetFraction * state.gridSpacing;
   const endOffset   = state.endOffsetFraction   * state.gridSpacing;
-  const geomStart   = offsetPoint(state.points[0],   state.points[1],      startOffset);
-  const geomEnd     = offsetPoint(state.points[last], state.points[last-1], endOffset);
-  const pts = state.points.map((p, i) =>
-    i === 0    ? { ...p, x: geomStart.x, y: geomStart.y } :
-    i === last ? { ...p, x: geomEnd.x,   y: geomEnd.y   } :
-    p
+  const geometryStart = offsetPoint(state.points[0],   state.points[1],      startOffset);
+  const geometryEnd   = offsetPoint(state.points[last], state.points[last-1], endOffset);
+  const pathPoints = state.points.map((point, index) =>
+    index === 0    ? { ...point, x: geometryStart.x, y: geometryStart.y } :
+    index === last ? { ...point, x: geometryEnd.x,   y: geometryEnd.y   } :
+    point
   );
-  const tangents = pts.map((p, i) => {
-    if (i === 0)            return vecSub(pts[1], pts[0]);
-    if (i === pts.length-1) return vecSub(pts[i], pts[i-1]);
-    return vecScale(vecSub(pts[i+1], pts[i-1]), 0.5);
+  const tangents = pathPoints.map((point, index) => {
+    if (index === 0)                    return vectorSubtract(pathPoints[1], pathPoints[0]);
+    if (index === pathPoints.length-1)  return vectorSubtract(pathPoints[index], pathPoints[index-1]);
+    return vectorScale(vectorSubtract(pathPoints[index+1], pathPoints[index-1]), 0.5);
   });
 
-  const sw = strokeFraction * state.gridSpacing;
-  ctx.strokeStyle = "black";
-  ctx.lineWidth   = sw;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0  = pts[i], p1 = pts[i+1];
-    const cp1 = vecAdd(p0, vecScale(tangents[i],   1/3));
-    const cp2 = vecSub(p1, vecScale(tangents[i+1], 1/3));
-    ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p1.x, p1.y);
+  const strokeWidth = strokeFraction * state.gridSpacing;
+  context.strokeStyle = "black";
+  context.lineWidth   = strokeWidth;
+  context.setLineDash([]);
+  context.beginPath();
+  context.moveTo(pathPoints[0].x, pathPoints[0].y);
+  for (let index = 0; index < pathPoints.length - 1; index++) {
+    const currentPoint = pathPoints[index], nextPoint = pathPoints[index+1];
+    const controlPoint1 = vectorAdd(currentPoint, vectorScale(tangents[index],   1/3));
+    const controlPoint2 = vectorSubtract(nextPoint, vectorScale(tangents[index+1], 1/3));
+    context.bezierCurveTo(controlPoint1.x, controlPoint1.y, controlPoint2.x, controlPoint2.y, nextPoint.x, nextPoint.y);
   }
-  ctx.stroke();
+  context.stroke();
 
   // Draw markers — same proportions as SVG markers.
   // SVG uses markerUnits="strokeWidth" with markerWidth=100,
   // so the marker box in pixels = 100 × strokeWidth.
-  const markerBox = 100 * sw;
+  const markerBox = 100 * strokeWidth;
 
   // Tangent angle at the path start
-  const t0 = tangents[0];
-  const startAngle = Math.atan2(t0.y, t0.x);
-  drawCrossMarker(ctx, pts[0].x, pts[0].y, startAngle, markerBox);
+  const startTangent = tangents[0];
+  const startAngle = Math.atan2(startTangent.y, startTangent.x);
+  drawCrossMarker(context, pathPoints[0].x, pathPoints[0].y, startAngle, markerBox);
 
   // Tangent angle at the path end
-  const tN = tangents[last];
-  const endAngle = Math.atan2(tN.y, tN.x);
-  drawArrowMarker(ctx, pts[last].x, pts[last].y, endAngle, markerBox);
+  const endTangent = tangents[last];
+  const endAngle = Math.atan2(endTangent.y, endTangent.x);
+  drawArrowMarker(context, pathPoints[last].x, pathPoints[last].y, endAngle, markerBox);
 
   // Control circles
-  state.points.forEach(p => {
+  state.points.forEach(point => {
     const strokeColor =
-      p.type === "center"   ? "black"  :
-      p.type === "endpoint" ? (p.id === "start" ? "green" : "red") :
+      point.type === "center"   ? "black"  :
+      point.type === "endpoint" ? (point.id === "start" ? "green" : "red") :
       "blue";
-    ctx.save();
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth   = 1.5 / state.canvasScale;
-    ctx.setLineDash([4 / state.canvasScale, 2 / state.canvasScale]);
-    ctx.fillStyle = "rgba(0,0,0,0)";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, state.circleRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    context.save();
+    context.strokeStyle = strokeColor;
+    context.lineWidth   = 1.5 / state.canvasScale;
+    context.setLineDash([4 / state.canvasScale, 2 / state.canvasScale]);
+    context.fillStyle = "rgba(0,0,0,0)";
+    context.beginPath();
+    context.arc(point.x, point.y, state.circleRadius, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.restore();
   });
 
-  ctx.restore();
+  context.restore();
 }

@@ -11,23 +11,23 @@ import { updateIntermediateViaIK } from './ik.mjs';
 export function resize() {
   state.setWidth(innerWidth);
   state.setHeight(innerHeight);
-  state.setCx(state.width  / 2);
-  state.setCy(state.height / 2);
-  state.setGridSpacing(state.cx * (1 - paddingFraction) / 4);
+  state.setCenterX(state.width  / 2);
+  state.setCenterY(state.height / 2);
+  state.setGridSpacing(state.centerX * (1 - paddingFraction) / 4);
   state.setHalfSpacing(state.gridSpacing / 2);
 
   state.setSnapThreshold(snapFraction   * state.gridSpacing);
   state.setCircleRadius(radiusFraction * state.gridSpacing);
-  state.setSegLen(state.gridSpacing);
-  state.setMaxReach(IK_SEG_COUNT * state.gridSpacing);
+  state.setSegmentLength(state.gridSpacing);
+  state.setMaximumReach(IK_SEG_COUNT * state.gridSpacing);
   state.setSideTolerance(sideTolFraction * state.gridSpacing);
 
-  state.svg.attr("width", state.width).attr("height", state.height);
+  state.svgSelection.attr("width", state.width).attr("height", state.height);
 
   // Keep <canvas> sized to match
-  const canvasEl  = document.getElementById("render-canvas");
-  canvasEl.width  = state.width;
-  canvasEl.height = state.height;
+  const canvasElement = document.getElementById("render-canvas");
+  canvasElement.width  = state.width;
+  canvasElement.height = state.height;
 
   if (state.circles)  state.circles.attr("r", state.circleRadius);
   if (state.mainPath) state.mainPath.attr("stroke-width", strokeFraction * state.gridSpacing);
@@ -35,12 +35,12 @@ export function resize() {
   drawGrid();
   initMarkers();
 
-  state.points.forEach(d => {
-    d.x = state.cx + d.xFactor * state.gridSpacing;
-    d.y = state.cy + d.yFactor * state.gridSpacing;
+  state.points.forEach(datum => {
+    datum.x = state.centerX + datum.xFactor * state.gridSpacing;
+    datum.y = state.centerY + datum.yFactor * state.gridSpacing;
   });
 
-  if (state.circles) state.circles.data(state.points).attr("cx", d => d.x).attr("cy", d => d.y);
+  if (state.circles) state.circles.data(state.points).attr("cx", datum => datum.x).attr("cy", datum => datum.y);
   if (state.animationEnabled) updateIntermediateViaIK();
   updatePath();
 }

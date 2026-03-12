@@ -5,7 +5,7 @@
 // coordinate space. Combined with the CSS transform on the SVG element for
 // pan/zoom, this gives an effectively infinite grid.
 //
-// The pattern origin is aligned to (cx, cy) so grid lines pass through the
+// The pattern origin is aligned to (centerX, centerY) so grid lines pass through the
 // viewport center. The large rect ensures grid lines are visible even when
 // the user pans far from the center.
 
@@ -18,40 +18,40 @@ const MAJOR_PATTERN_ID = "grid-pattern-major";
 export function drawGrid() {
   state.gridGroup.selectAll("*").remove();
 
-  const defs = state.svg.select("defs");
+  const defs = state.svgSelection.select("defs");
   defs.select("#" + MINOR_PATTERN_ID).remove();
   defs.select("#" + MAJOR_PATTERN_ID).remove();
 
-  // Minor-grid pattern: halfSpacing × halfSpacing tile.
-  const minorPat = defs.append("pattern")
+  // Minor-grid pattern: halfSpacing x halfSpacing tile.
+  const minorPattern = defs.append("pattern")
     .attr("id", MINOR_PATTERN_ID)
-    .attr("x", ((state.cx % state.halfSpacing) + state.halfSpacing) % state.halfSpacing)
-    .attr("y", ((state.cy % state.halfSpacing) + state.halfSpacing) % state.halfSpacing)
+    .attr("x", ((state.centerX % state.halfSpacing) + state.halfSpacing) % state.halfSpacing)
+    .attr("y", ((state.centerY % state.halfSpacing) + state.halfSpacing) % state.halfSpacing)
     .attr("width",  state.halfSpacing)
     .attr("height", state.halfSpacing)
     .attr("patternUnits", "userSpaceOnUse");
-  minorPat.append("line")
+  minorPattern.append("line")
     .attr("x1", state.halfSpacing).attr("y1", 0)
     .attr("x2", state.halfSpacing).attr("y2", state.halfSpacing)
     .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
-  minorPat.append("line")
+  minorPattern.append("line")
     .attr("x1", 0).attr("y1", state.halfSpacing)
     .attr("x2", state.halfSpacing).attr("y2", state.halfSpacing)
     .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
 
-  // Major-grid pattern: gridSpacing × gridSpacing tile.
-  const majorPat = defs.append("pattern")
+  // Major-grid pattern: gridSpacing x gridSpacing tile.
+  const majorPattern = defs.append("pattern")
     .attr("id", MAJOR_PATTERN_ID)
-    .attr("x", ((state.cx % state.gridSpacing) + state.gridSpacing) % state.gridSpacing)
-    .attr("y", ((state.cy % state.gridSpacing) + state.gridSpacing) % state.gridSpacing)
+    .attr("x", ((state.centerX % state.gridSpacing) + state.gridSpacing) % state.gridSpacing)
+    .attr("y", ((state.centerY % state.gridSpacing) + state.gridSpacing) % state.gridSpacing)
     .attr("width",  state.gridSpacing)
     .attr("height", state.gridSpacing)
     .attr("patternUnits", "userSpaceOnUse");
-  majorPat.append("line")
+  majorPattern.append("line")
     .attr("x1", state.gridSpacing).attr("y1", 0)
     .attr("x2", state.gridSpacing).attr("y2", state.gridSpacing)
     .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);
-  majorPat.append("line")
+  majorPattern.append("line")
     .attr("x1", 0).attr("y1", state.gridSpacing)
     .attr("x2", state.gridSpacing).attr("y2", state.gridSpacing)
     .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);

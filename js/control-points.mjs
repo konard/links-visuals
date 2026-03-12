@@ -14,7 +14,7 @@ export function setD3(d3) { _d3 = d3; }
 
 export function initControlPoints() {
   state.setMainPath(
-    state.svg.append("path")
+    state.svgSelection.append("path")
       .attr("fill", "none")
       .attr("stroke", "black")
       .attr("stroke-width", 0)   // set to strokeFraction * gridSpacing in resize()
@@ -23,52 +23,52 @@ export function initControlPoints() {
   );
 
   state.setCircles(
-    state.svg.selectAll("circle.control")
-      .data(state.points, d => d.id)
+    state.svgSelection.selectAll("circle.control")
+      .data(state.points, datum => datum.id)
       .enter()
       .append("circle")
-      .attr("class", d => "control " + d.id)
+      .attr("class", datum => "control " + datum.id)
       .attr("r", state.circleRadius)
       .attr("fill", "rgba(0,0,0,0)")
       .attr("stroke-dasharray", "4 2")
-      .attr("stroke", d => {
-        if (d.type === "center")   return "black";
-        if (d.type === "endpoint") return d.id === "start" ? "green" : "red";
+      .attr("stroke", datum => {
+        if (datum.type === "center")   return "black";
+        if (datum.type === "endpoint") return datum.id === "start" ? "green" : "red";
         return "blue";
       })
-      .style("pointer-events", d => d.draggable ? "auto" : "none")
+      .style("pointer-events", datum => datum.draggable ? "auto" : "none")
   );
 
-  // Reorder SVG DOM for correct paint order (bottom → top):
-  state.circles.filter(d => d.type === "center").lower();
-  state.circles.filter(d => d.id === "start").raise();
-  state.circles.filter(d => d.id === "end").raise();
+  // Reorder SVG DOM for correct paint order (bottom -> top):
+  state.circles.filter(datum => datum.type === "center").lower();
+  state.circles.filter(datum => datum.id === "start").raise();
+  state.circles.filter(datum => datum.id === "end").raise();
 
   // D3 drag — converts screen coords to SVG-local coords via screenToWorld()
-  state.circles.filter(d => d.draggable).call(_d3.drag()
-    .on("start", function(ev, d) {
+  state.circles.filter(datum => datum.draggable).call(_d3.drag()
+    .on("start", function(event, datum) {
       _d3.select(this).attr("stroke-dasharray", null);
-      if (d.id === "start" || d.id === "end") state.setAnimationEnabled(true);
+      if (datum.id === "start" || datum.id === "end") state.setAnimationEnabled(true);
     })
-    .on("drag", function(ev, d) {
+    .on("drag", function(event, datum) {
       // For touch events, clientX/Y lives on changedTouches[0].
-      const src = ev.sourceEvent;
-      const clientX = src.clientX !== undefined ? src.clientX
-                    : src.changedTouches ? src.changedTouches[0].clientX : ev.x;
-      const clientY = src.clientY !== undefined ? src.clientY
-                    : src.changedTouches ? src.changedTouches[0].clientY : ev.y;
-      const wpt  = screenToWorld(clientX, clientY);
-      const nx   = state.cx + Math.round((wpt.x - state.cx) / state.halfSpacing) * state.halfSpacing;
-      const ny   = state.cy + Math.round((wpt.y - state.cy) / state.halfSpacing) * state.halfSpacing;
-      const dist = Math.hypot(wpt.x - nx, wpt.y - ny);
-      d.x = dist < state.snapThreshold ? nx : wpt.x;
-      d.y = dist < state.snapThreshold ? ny : wpt.y;
-      _d3.select(this).attr("cx", d.x).attr("cy", d.y);
+      const source = event.sourceEvent;
+      const clientX = source.clientX !== undefined ? source.clientX
+                    : source.changedTouches ? source.changedTouches[0].clientX : event.x;
+      const clientY = source.clientY !== undefined ? source.clientY
+                    : source.changedTouches ? source.changedTouches[0].clientY : event.y;
+      const worldPoint  = screenToWorld(clientX, clientY);
+      const nearestX    = state.centerX + Math.round((worldPoint.x - state.centerX) / state.halfSpacing) * state.halfSpacing;
+      const nearestY    = state.centerY + Math.round((worldPoint.y - state.centerY) / state.halfSpacing) * state.halfSpacing;
+      const distance    = Math.hypot(worldPoint.x - nearestX, worldPoint.y - nearestY);
+      datum.x = distance < state.snapThreshold ? nearestX : worldPoint.x;
+      datum.y = distance < state.snapThreshold ? nearestY : worldPoint.y;
+      _d3.select(this).attr("cx", datum.x).attr("cy", datum.y);
       updatePath();
     })
-    .on("end", function(ev, d) {
-      d.xFactor = (d.x - state.cx) / state.gridSpacing;
-      d.yFactor = (d.y - state.cy) / state.gridSpacing;
+    .on("end", function(event, datum) {
+      datum.xFactor = (datum.x - state.centerX) / state.gridSpacing;
+      datum.yFactor = (datum.y - state.centerY) / state.gridSpacing;
       _d3.select(this).attr("stroke-dasharray", "4 2");
     }));
 }

@@ -2,14 +2,14 @@
 
 import { points } from './state.mjs';
 
-function fmt(n) {
-  const s = Math.round(n).toString();
-  return s.startsWith('-') ? '-' + s.slice(1).padStart(3,'0') : s.padStart(4,'0');
+function format(number) {
+  const string = Math.round(number).toString();
+  return string.startsWith('-') ? '-' + string.slice(1).padStart(3,'0') : string.padStart(4,'0');
 }
 
 export function updateHUD() {
   document.getElementById("coordinates").textContent =
-    points.map(p =>
-      `${p.id.padEnd(6)}: (${fmt(p.x)}, ${fmt(p.y)})  z=${String(p.z).padStart(4,'0')}`
+    points.map(point =>
+      `${point.id.padEnd(6)}: (${format(point.x)}, ${format(point.y)})  z=${String(point.z).padStart(4,'0')}`
     ).join("\n");
 }

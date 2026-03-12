@@ -15,7 +15,7 @@ export function updateIntermediateViaIK() {
 
   const result = computeIntermediatePoints(
     center, start, end,
-    state.SEG_LEN, state.MAX_REACH, state.SIDE_TOLERANCE,
+    state.segmentLength, state.maximumReach, state.sideTolerance,
     state.preferRight, state.preferLeft
   );
 

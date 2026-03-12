@@ -99,36 +99,36 @@ function assertClose(actual, expected, msg) {
 // ---------------------------------------------------------------------------
 describe('screenToWorld', () => {
   it('returns SVG origin when no transform is applied', () => {
-    const pt = screenToWorld(0, 0, 0, 0, 1);
-    assertClose(pt.x, 0, 'x');
-    assertClose(pt.y, 0, 'y');
+    const point = screenToWorld(0, 0, 0, 0, 1);
+    assertClose(point.x, 0, 'x');
+    assertClose(point.y, 0, 'y');
   });
 
   it('converts correctly with scale=1 and no offset', () => {
-    const pt = screenToWorld(300, 200, 0, 0, 1);
-    assertClose(pt.x, 300, 'x');
-    assertClose(pt.y, 200, 'y');
+    const point = screenToWorld(300, 200, 0, 0, 1);
+    assertClose(point.x, 300, 'x');
+    assertClose(point.y, 200, 'y');
   });
 
   it('accounts for translation offset', () => {
-    const pt = screenToWorld(300, 200, 100, 50, 1);
-    assertClose(pt.x, 200, 'x');
-    assertClose(pt.y, 150, 'y');
+    const point = screenToWorld(300, 200, 100, 50, 1);
+    assertClose(point.x, 200, 'x');
+    assertClose(point.y, 150, 'y');
   });
 
   it('accounts for scale', () => {
     // With scale=2 and no offset, screen(200,100) → world(100,50)
-    const pt = screenToWorld(200, 100, 0, 0, 2);
-    assertClose(pt.x, 100, 'x');
-    assertClose(pt.y, 50, 'y');
+    const point = screenToWorld(200, 100, 0, 0, 2);
+    assertClose(point.x, 100, 'x');
+    assertClose(point.y, 50, 'y');
   });
 
   it('accounts for both offset and scale', () => {
     // transform: translate(100,50) scale(2)
     // screen point (500, 250) → world: (500-100)/2=200, (250-50)/2=100
-    const pt = screenToWorld(500, 250, 100, 50, 2);
-    assertClose(pt.x, 200, 'x');
-    assertClose(pt.y, 100, 'y');
+    const point = screenToWorld(500, 250, 100, 50, 2);
+    assertClose(point.x, 200, 'x');
+    assertClose(point.y, 100, 'y');
   });
 
   it('is the inverse of the CSS transform (world→screen)', () => {
@@ -140,9 +140,9 @@ describe('screenToWorld', () => {
     const offsetX = 40, offsetY = -30, scale = 1.5;
     const screenX = wx * scale + offsetX;
     const screenY = wy * scale + offsetY;
-    const pt = screenToWorld(screenX, screenY, offsetX, offsetY, scale);
-    assertClose(pt.x, wx, 'x round-trip');
-    assertClose(pt.y, wy, 'y round-trip');
+    const point = screenToWorld(screenX, screenY, offsetX, offsetY, scale);
+    assertClose(point.x, wx, 'x round-trip');
+    assertClose(point.y, wy, 'y round-trip');
   });
 });
 

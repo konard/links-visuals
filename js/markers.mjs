@@ -6,13 +6,13 @@
 // automatically based on the path stroke-width.
 //
 // Marker geometry:
-//   cross-marker: vertical tick at x ≈ 57.7, spanning y ≈ 39.3 – 60.7
-//   arrow-marker: two arms from (10.35, 50±0.35) back to (−0.35, 40 or 60)
+//   cross-marker: vertical tick at x ~ 57.7, spanning y ~ 39.3 - 60.7
+//   arrow-marker: two arms from (10.35, 50+/-0.35) back to (-0.35, 40 or 60)
 
 import * as state from './state.mjs';
 
 export function initMarkers() {
-  const defs = state.svg.select("defs");
+  const defs = state.svgSelection.select("defs");
   defs.select("#cross-marker").remove();
   defs.select("#arrow-marker").remove();
 
@@ -26,8 +26,8 @@ export function initMarkers() {
     .attr("refY", 50)
     .attr("orient", "auto")
     .append("g")
-    .call(g => {
-      g.append("line")
+    .call(group => {
+      group.append("line")
        .attr("x1", 62.5 - (12.5 - 12.5/1.618))
        .attr("y1", 25 + 14.5 - 0.23)
        .attr("x2", 62.5 - (12.5 - 12.5/1.618))
@@ -45,14 +45,14 @@ export function initMarkers() {
     .attr("refY", 50)
     .attr("orient", "auto")
     .append("g")
-    .call(g => {
-      g.append("line")
+    .call(group => {
+      group.append("line")
        .attr("x1", 10 + 0.35)
        .attr("y1", 50 + 0.35)
        .attr("x2", 0 - 0.35)
        .attr("y2", 40 - 0.35)
        .attr("stroke", "black");
-      g.append("line")
+      group.append("line")
        .attr("x1", 10 + 0.35)
        .attr("y1", 50 - 0.35)
        .attr("x2", 0 - 0.35)
