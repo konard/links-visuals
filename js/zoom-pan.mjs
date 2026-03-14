@@ -1,11 +1,25 @@
 // Zoom and pan event handlers.
-// Shared between SVG mode (listeners on svgElement) and Canvas mode (listeners on canvasElement).
+// Listeners are attached to `document` so that zoom/pan works everywhere in the
+// viewport, not just over the SVG/Canvas element's CSS layout box. This fixes
+// the issue where zoom stops working after panning far from center or zooming
+// out (the CSS transform shrinks/moves the element's hit-test area).
 
 import * as state from './state.mjs';
 import { MIN_SCALE, MAX_SCALE } from './constants.mjs';
 import { applyCanvasTransform } from './svg-setup.mjs';
 
+// Debug logging — enable via URL param ?debug=zoom or by setting
+// window.__ZOOM_PAN_DEBUG = true in the browser console.
+function isDebug() {
+  if (typeof window !== 'undefined' && window.__ZOOM_PAN_DEBUG) return true;
+  if (typeof location !== 'undefined' && location.search.includes('debug=zoom')) return true;
+  return false;
+}
+function dbg(...args) { if (isDebug()) console.log('[zoom-pan]', ...args); }
+
 export function handleWheel(event) {
+  // Ignore wheel events on UI panel elements (sliders, config, etc.)
+  if (event.target.closest('#config-panel, #coordinates, #toggle-panels')) return;
   event.preventDefault();
   const delta    = event.deltaMode === 1 ? event.deltaY * 24 : event.deltaY;
   const factor   = Math.pow(0.999, delta);
@@ -18,18 +32,23 @@ export function handleWheel(event) {
   state.setCanvasOffsetY(event.clientY - pivotY * newScale);
   state.setCanvasScale(newScale);
   applyCanvasTransform();
+  dbg('wheel', { clientX: event.clientX, clientY: event.clientY, delta, factor: factor.toFixed(4), scale: newScale.toFixed(4), offsetX: state.canvasOffsetX.toFixed(1), offsetY: state.canvasOffsetY.toFixed(1) });
 }
 
 export function handleMouseDown(event) {
+  // Ignore clicks on control circles (those are handled by D3 drag)
   const onCircle = event.target.tagName === "circle" && event.target.classList.contains("control");
-  if (!onCircle) {
+  // Ignore clicks on UI panel elements (buttons, sliders, etc.)
+  const onUI = event.target.closest('#config-panel, #coordinates, #toggle-panels');
+  if (!onCircle && !onUI) {
     state.setIsPanning(true);
     state.setPanStartX(event.clientX);
     state.setPanStartY(event.clientY);
     state.setPanOffsetStartX(state.canvasOffsetX);
     state.setPanOffsetStartY(state.canvasOffsetY);
-    event.currentTarget.style.cursor = "grabbing";
+    document.body.style.cursor = "grabbing";
     event.preventDefault();
+    dbg('mousedown → pan start', { clientX: event.clientX, clientY: event.clientY, target: event.target.tagName });
   }
 }
 
@@ -43,7 +62,7 @@ export function handleMouseMove(event) {
 export function handleMouseUp() {
   if (state.isPanning) {
     state.setIsPanning(false);
-    if (state.svgElement) state.svgElement.style.cursor = "";
+    document.body.style.cursor = "";
   }
 }
 
@@ -53,6 +72,8 @@ function getTouchOnCircle(touch) {
 }
 
 export function handleTouchStart(event) {
+  // Ignore touches on UI panel elements
+  if (event.target.closest('#config-panel, #coordinates, #toggle-panels')) return;
   event.preventDefault();
   for (const touch of event.changedTouches) state.activeTouches[touch.identifier] = touch;
   const identifiers = Object.keys(state.activeTouches);
@@ -120,23 +141,24 @@ export function handleTouchCancel(event) {
 }
 
 export function initCanvasZoomPan() {
-  state.svgElement.addEventListener("wheel",       handleWheel,       { passive: false });
-  state.svgElement.addEventListener("mousedown",   handleMouseDown);
-  window.addEventListener("mousemove",             handleMouseMove);
-  window.addEventListener("mouseup",               handleMouseUp);
-  state.svgElement.addEventListener("touchstart",  handleTouchStart,  { passive: false });
-  state.svgElement.addEventListener("touchmove",   handleTouchMove,   { passive: false });
-  state.svgElement.addEventListener("touchend",    handleTouchEnd,    { passive: false });
-  state.svgElement.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+  // Attach zoom/pan listeners to `document` so they fire everywhere in the
+  // viewport — not just over the SVG element's CSS layout box. This is the
+  // fix for issue #21: after panning or zooming out, the SVG element's
+  // transformed bounding box may not cover the full viewport, causing
+  // events at those positions to be lost.
+  document.addEventListener("wheel",       handleWheel,       { passive: false });
+  document.addEventListener("mousedown",   handleMouseDown);
+  window.addEventListener("mousemove",     handleMouseMove);
+  window.addEventListener("mouseup",       handleMouseUp);
+  document.addEventListener("touchstart",  handleTouchStart,  { passive: false });
+  document.addEventListener("touchmove",   handleTouchMove,   { passive: false });
+  document.addEventListener("touchend",    handleTouchEnd,    { passive: false });
+  document.addEventListener("touchcancel", handleTouchCancel, { passive: false });
 }
 
 export function initCanvasElementEvents(canvasElement) {
-  if (state.canvasEventsAttached) return;
-  state.setCanvasEventsAttached(true);
-  canvasElement.addEventListener("wheel",       handleWheel,       { passive: false });
-  canvasElement.addEventListener("mousedown",   handleMouseDown);
-  canvasElement.addEventListener("touchstart",  handleTouchStart,  { passive: false });
-  canvasElement.addEventListener("touchmove",   handleTouchMove,   { passive: false });
-  canvasElement.addEventListener("touchend",    handleTouchEnd,    { passive: false });
-  canvasElement.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+  // Canvas mode events are already handled by the document-level listeners
+  // registered in initCanvasZoomPan(). This function is kept for backward
+  // compatibility but is now a no-op since all events go through document.
+  void canvasElement;
 }
