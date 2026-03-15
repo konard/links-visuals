@@ -397,3 +397,63 @@ describe('pointer-events fix — zoom at any grid position', () => {
     assertClose(worldAfter.y, worldBefore.y, 'after pan, zoom Y preserved');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: Issue #21 regression — zoom far from link center
+// ---------------------------------------------------------------------------
+describe('Issue #21 — zoom works far from link center', () => {
+  it('zoom-in after panning far right (cursor beyond initial SVG bounds)', () => {
+    // Simulates: user pans 5000px to the right, then tries to zoom at
+    // a screen position that would be outside the original SVG element box.
+    const offsetX = -5000, offsetY = 0, scale = 1;
+    const clientX = 960, clientY = 540; // center of a 1920×1080 viewport
+    const worldBefore = screenToWorld(clientX, clientY, offsetX, offsetY, scale);
+
+    const { newOffsetX, newOffsetY, newScale } = computeWheelZoom(
+      clientX, clientY, offsetX, offsetY, scale, 1.1
+    );
+    const worldAfter = screenToWorld(clientX, clientY, newOffsetX, newOffsetY, newScale);
+
+    assertClose(worldAfter.x, worldBefore.x, 'far-right pan: world X preserved');
+    assertClose(worldAfter.y, worldBefore.y, 'far-right pan: world Y preserved');
+  });
+
+  it('zoom-out at small scale (SVG layout box smaller than viewport)', () => {
+    // Simulates: user has already zoomed out to scale=0.3, so the SVG's
+    // CSS box is only 30% of the viewport. Cursor at viewport edge is
+    // outside the SVG box.
+    const offsetX = 200, offsetY = 100, scale = 0.3;
+    const clientX = 1800, clientY = 1000; // far bottom-right of viewport
+    const worldBefore = screenToWorld(clientX, clientY, offsetX, offsetY, scale);
+
+    const { newOffsetX, newOffsetY, newScale } = computeWheelZoom(
+      clientX, clientY, offsetX, offsetY, scale, 0.95
+    );
+    const worldAfter = screenToWorld(clientX, clientY, newOffsetX, newOffsetY, newScale);
+
+    assertClose(worldAfter.x, worldBefore.x, 'zoomed-out viewport: world X preserved');
+    assertClose(worldAfter.y, worldBefore.y, 'zoomed-out viewport: world Y preserved');
+  });
+
+  it('successive zoom operations accumulate correctly at any position', () => {
+    // Simulates several successive wheel zooms at the same position after
+    // panning — confirms no drift accumulates.
+    let offsetX = -3000, offsetY = 2000, scale = 0.8;
+    const clientX = 100, clientY = 900;
+
+    const worldInitial = screenToWorld(clientX, clientY, offsetX, offsetY, scale);
+
+    for (let i = 0; i < 20; i++) {
+      const factor = i % 2 === 0 ? 1.05 : 0.95;
+      const result = computeWheelZoom(clientX, clientY, offsetX, offsetY, scale, factor);
+      offsetX = result.newOffsetX;
+      offsetY = result.newOffsetY;
+      scale   = result.newScale;
+    }
+
+    // After 10 zoom-ins and 10 zoom-outs at same factor, scale returns to original
+    const worldFinal = screenToWorld(clientX, clientY, offsetX, offsetY, scale);
+    assertClose(worldFinal.x, worldInitial.x, 'successive zooms: world X preserved');
+    assertClose(worldFinal.y, worldInitial.y, 'successive zooms: world Y preserved');
+  });
+});
