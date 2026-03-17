@@ -95,7 +95,12 @@
 
       function saveSettings() {
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ linkCount }));
+          const linkPositions = links.map(l => ({
+            start: { x: l.start.x, y: l.start.y },
+            center: { x: l.center.x, y: l.center.y },
+            end: { x: l.end.x, y: l.end.y },
+          }));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ linkCount, linkPositions }));
         } catch {}
       }
 
@@ -110,6 +115,8 @@
       // ---- State ----
       let linkCount = 4;
       let width = 0, height = 0;
+      let links = [];       // per-link state: { start, center, end, ik, preferRight, preferLeft }
+      let isDragging = false; // true when a control point is being dragged
 
       // Zoom/pan state
       let canvasScale = 1, canvasOffsetX = 0, canvasOffsetY = 0;
@@ -153,6 +160,7 @@
       linkCountSlider.addEventListener("input", () => {
         linkCount = parseInt(linkCountSlider.value, 10);
         linkCountVal.textContent = linkCount;
+        initLinks();
         render();
         saveSettings();
       });
@@ -167,6 +175,7 @@
         canvasOffsetX = 0;
         canvasOffsetY = 0;
         applyTransform();
+        initLinks();
         render();
       });
 
@@ -175,6 +184,13 @@
         svg.style("transform",
           `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${canvasScale})`);
         svg.style("transform-origin", "0 0");
+      }
+
+      function screenToWorld(clientX, clientY) {
+        return {
+          x: (clientX - canvasOffsetX) / canvasScale,
+          y: (clientY - canvasOffsetY) / canvasScale
+        };
       }
 
       function handleWheel(event) {
@@ -194,6 +210,7 @@
 
       function handleMouseDown(event) {
         if (event.target.closest('#config-panel, #toggle-panels')) return;
+        if (isDragging) return;
         isPanning = true;
         panStartX = event.clientX;
         panStartY = event.clientY;
@@ -216,6 +233,7 @@
 
       function handleTouchStart(event) {
         if (event.target.closest('#config-panel, #toggle-panels')) return;
+        if (isDragging) return;
         event.preventDefault();
         for (const t of event.changedTouches) activeTouches[t.identifier] = t;
         const ids = Object.keys(activeTouches);
@@ -231,6 +249,7 @@
       }
 
       function handleTouchMove(event) {
+        if (isDragging) return;
         event.preventDefault();
         for (const t of event.changedTouches) activeTouches[t.identifier] = t;
         const ids = Object.keys(activeTouches);
@@ -320,13 +339,11 @@
 
       // ---- Color generation ----
       function getLinkColor(index, total) {
-        // Evenly spaced hues across the RGB spectrum
         const hue = (index / total) * 360;
         return `hsl(${hue}, 80%, 45%)`;
       }
 
       function getLinkColorHex(index, total) {
-        // Convert HSL to hex for markers
         const hue = (index / total) * 360;
         const s = 0.80, l = 0.45;
         const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -381,10 +398,10 @@
       }
 
       // ---- Path building (from path.mjs, adapted for arbitrary points array) ----
-      function buildPathData(points, gridSpacing) {
+      function buildPathData(points, segLen) {
         const last = points.length - 1;
-        const startOffset = START_OFFSET_FRACTION * gridSpacing;
-        const endOffset   = END_OFFSET_FRACTION   * gridSpacing;
+        const startOffset = START_OFFSET_FRACTION * segLen;
+        const endOffset   = END_OFFSET_FRACTION   * segLen;
         const geoStart = offsetPoint(points[0], points[1], startOffset);
         const geoEnd   = offsetPoint(points[last], points[last-1], endOffset);
 
@@ -410,113 +427,265 @@
         return d;
       }
 
+      // ---- Compute current grid layout parameters ----
+      function computeGridParams() {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const gridSize = Math.ceil(Math.sqrt(linkCount));
+        const availableSize = Math.min(width, height) * (1 - 2 * paddingFraction);
+        const gridUnit = availableSize / (2 * gridSize - 1);
+        const cellSpacing = gridSize > 1 ? 2 * gridUnit : availableSize;
+        const segLen = gridUnit * 0.35;
+        const gridSpacing = gridUnit;
+        const halfSpacing = gridUnit / 2;
+        const gridStartX = centerX - (gridSize - 1) * cellSpacing / 2;
+        const gridStartY = centerY - (gridSize - 1) * cellSpacing / 2;
+        const snapThreshold = snapFraction * gridSpacing;
+        const cpRadius = radiusFraction * gridSpacing;
+        return { centerX, centerY, gridSize, gridUnit, cellSpacing, segLen,
+                 gridSpacing, halfSpacing, gridStartX, gridStartY, snapThreshold, cpRadius };
+      }
+
+      // ---- Default grid position for link i ----
+      function defaultPosition(i, params) {
+        const col = i % params.gridSize;
+        const row = Math.floor(i / params.gridSize);
+        const cx = params.gridStartX + col * params.cellSpacing;
+        const cy = params.gridStartY + row * params.cellSpacing;
+        return { x: cx, y: cy };
+      }
+
+      // ---- Initialize link state ----
+      function initLinks() {
+        const params = computeGridParams();
+        const oldLinks = links;
+        links = [];
+
+        // Try to restore from saved settings
+        const savedData = loadSettings();
+        const savedPositions = savedData?.linkPositions || [];
+
+        for (let i = 0; i < linkCount; i++) {
+          const defPos = defaultPosition(i, params);
+          let start, center, end;
+
+          if (i < savedPositions.length && savedData?.linkCount === linkCount) {
+            // Restore saved positions
+            start  = { ...savedPositions[i].start };
+            center = { ...savedPositions[i].center };
+            end    = { ...savedPositions[i].end };
+          } else if (i < oldLinks.length) {
+            // Keep existing positions when changing link count
+            start  = { ...oldLinks[i].start };
+            center = { ...oldLinks[i].center };
+            end    = { ...oldLinks[i].end };
+          } else {
+            // Self-referencing default: all three at the same position
+            start  = { ...defPos };
+            center = { ...defPos };
+            end    = { ...defPos };
+          }
+
+          links.push({
+            start, center, end,
+            preferRight: 0, preferLeft: 0,
+          });
+        }
+      }
+
+      // ---- Recompute IK for a single link ----
+      function recomputeIK(link, segLen) {
+        const maxReach = IK_SEG_COUNT * segLen;
+        const sideTolerance = sideTolFraction * segLen;
+        const ik = computeIntermediatePoints(
+          link.center, link.start, link.end,
+          segLen, maxReach, sideTolerance,
+          link.preferRight, link.preferLeft
+        );
+        link.preferRight = ik.preferRight;
+        link.preferLeft  = ik.preferLeft;
+        return ik;
+      }
+
+      // ---- Update a single link's path and control points (no full re-render) ----
+      function updateLink(i) {
+        const params = computeGridParams();
+        const link = links[i];
+        const ik = recomputeIK(link, params.segLen);
+
+        const pts = [
+          link.start, ik.p1, ik.p2, ik.p3,
+          link.center,
+          ik.p4, ik.p5, ik.p6,
+          link.end,
+        ];
+        const pathData = buildPathData(pts, params.segLen);
+
+        // Update path
+        linksGroup.select(`path.link-${i}`).attr("d", pathData);
+
+        // Update control point positions
+        linksGroup.select(`circle.cp-start-${i}`)
+          .attr("cx", link.start.x).attr("cy", link.start.y);
+        linksGroup.select(`circle.cp-center-${i}`)
+          .attr("cx", link.center.x).attr("cy", link.center.y);
+        linksGroup.select(`circle.cp-end-${i}`)
+          .attr("cx", link.end.x).attr("cy", link.end.y);
+      }
+
       // ---- Main render ----
       function render() {
         width = innerWidth;
         height = innerHeight;
         svg.attr("width", width).attr("height", height);
 
-        const centerX = width / 2;
-        const centerY = height / 2;
+        const params = computeGridParams();
 
-        // Grid size: ceil(sqrt(linkCount))
-        const gridSize = Math.ceil(Math.sqrt(linkCount));
-
-        // Grid spacing: fit the grid in the viewport with padding
-        // Each link occupies 1 unit, with 1 unit gap between links,
-        // so total span = gridSize units (links) + (gridSize - 1) units (gaps) = 2*gridSize - 1 units
-        const availableSize = Math.min(width, height) * (1 - 2 * paddingFraction);
-        const gridUnit = availableSize / (2 * gridSize - 1);
-        // Cell spacing = 2 grid units (1 for link + 1 for gap)
-        const cellSpacing = gridSize > 1 ? 2 * gridUnit : availableSize;
-        // The segment length for each self-referencing link fits within one grid unit
-        const segLen = gridUnit * 0.35;
-
-        const gridSpacing = gridUnit;
-        const halfSpacing = gridUnit / 2;
-
-        drawBackgroundGrid(centerX, centerY, gridSpacing, halfSpacing);
+        drawBackgroundGrid(params.centerX, params.centerY, params.gridSpacing, params.halfSpacing);
         initMarkers(linkCount);
 
         // Clear previous links
         linksGroup.selectAll("*").remove();
 
-        // Control point radius scales with grid unit
-        const cpRadius = gridUnit * 0.08;
-
-        // Compute grid positions
-        const gridStartX = centerX - (gridSize - 1) * cellSpacing / 2;
-        const gridStartY = centerY - (gridSize - 1) * cellSpacing / 2;
-
         for (let i = 0; i < linkCount; i++) {
-          const col = i % gridSize;
-          const row = Math.floor(i / gridSize);
-          const cx = gridStartX + col * cellSpacing;
-          const cy = gridStartY + row * cellSpacing;
-
+          const link = links[i];
           const linkColor = getLinkColor(i, linkCount);
+          const ik = recomputeIK(link, params.segLen);
 
-          // Self-referencing: start = end = center
-          const center = { x: cx, y: cy };
-          const start  = { x: cx, y: cy };
-          const end    = { x: cx, y: cy };
-
-          const maxReach = IK_SEG_COUNT * segLen;
-          const sideTolerance = sideTolFraction * segLen;
-
-          const ik = computeIntermediatePoints(center, start, end, segLen, maxReach, sideTolerance);
-
-          // Build points array: start, p1, p2, p3, center, p4, p5, p6, end
           const pts = [
-            { x: start.x, y: start.y },
-            { x: ik.p1.x, y: ik.p1.y },
-            { x: ik.p2.x, y: ik.p2.y },
-            { x: ik.p3.x, y: ik.p3.y },
-            { x: center.x, y: center.y },
-            { x: ik.p4.x, y: ik.p4.y },
-            { x: ik.p5.x, y: ik.p5.y },
-            { x: ik.p6.x, y: ik.p6.y },
-            { x: end.x, y: end.y },
+            link.start, ik.p1, ik.p2, ik.p3,
+            link.center,
+            ik.p4, ik.p5, ik.p6,
+            link.end,
           ];
-
-          const pathData = buildPathData(pts, segLen);
+          const pathData = buildPathData(pts, params.segLen);
 
           // Draw link path with per-link color
           linksGroup.append("path")
+            .attr("class", `link-${i}`)
             .attr("fill", "none")
             .attr("stroke", linkColor)
-            .attr("stroke-width", strokeFraction * segLen)
+            .attr("stroke-width", strokeFraction * params.segLen)
             .attr("marker-start", `url(#cross-marker-${i})`)
             .attr("marker-end", `url(#arrow-marker-${i})`)
             .attr("d", pathData);
 
-          // Draw control points like blueprint.html
-          // Start: link's color + 0.5 opacity green overlay
-          linksGroup.append("circle")
-            .attr("cx", start.x).attr("cy", start.y).attr("r", cpRadius)
-            .attr("fill", linkColor).attr("opacity", 0.8)
-            .attr("stroke", "green").attr("stroke-width", cpRadius * 0.3)
-            .attr("stroke-opacity", 0.5);
+          // Control points styled like blueprint.html:
+          // - fill: transparent (rgba(0,0,0,0))
+          // - stroke-dasharray: "4 2"
+          // - stroke-width: 2
+          // - stroke color: green for start, link color for center, red for end
 
-          // Center: link's color
+          // Start control point: green stroke
           linksGroup.append("circle")
-            .attr("cx", center.x).attr("cy", center.y).attr("r", cpRadius)
-            .attr("fill", linkColor).attr("opacity", 0.8)
-            .attr("stroke", linkColor).attr("stroke-width", cpRadius * 0.3)
-            .attr("stroke-dasharray", "4 2");
+            .attr("class", `cp-start-${i}`)
+            .attr("cx", link.start.x).attr("cy", link.start.y)
+            .attr("r", params.cpRadius)
+            .attr("fill", "rgba(0,0,0,0)")
+            .attr("stroke", "green")
+            .attr("stroke-dasharray", "4 2")
+            .attr("stroke-width", 2)
+            .style("pointer-events", "auto")
+            .style("cursor", "grab")
+            .datum({ linkIndex: i, pointType: "start" });
 
-          // End: link's color + 0.5 opacity red overlay
+          // Center control point: link color stroke
           linksGroup.append("circle")
-            .attr("cx", end.x).attr("cy", end.y).attr("r", cpRadius)
-            .attr("fill", linkColor).attr("opacity", 0.8)
-            .attr("stroke", "red").attr("stroke-width", cpRadius * 0.3)
-            .attr("stroke-opacity", 0.5);
+            .attr("class", `cp-center-${i}`)
+            .attr("cx", link.center.x).attr("cy", link.center.y)
+            .attr("r", params.cpRadius)
+            .attr("fill", "rgba(0,0,0,0)")
+            .attr("stroke", linkColor)
+            .attr("stroke-dasharray", "4 2")
+            .attr("stroke-width", 2)
+            .style("pointer-events", "auto")
+            .style("cursor", "grab")
+            .datum({ linkIndex: i, pointType: "center" });
+
+          // End control point: red stroke
+          linksGroup.append("circle")
+            .attr("class", `cp-end-${i}`)
+            .attr("cx", link.end.x).attr("cy", link.end.y)
+            .attr("r", params.cpRadius)
+            .attr("fill", "rgba(0,0,0,0)")
+            .attr("stroke", "red")
+            .attr("stroke-dasharray", "4 2")
+            .attr("stroke-width", 2)
+            .style("pointer-events", "auto")
+            .style("cursor", "grab")
+            .datum({ linkIndex: i, pointType: "end" });
         }
+
+        // Attach drag behavior to all control point circles
+        attachDrag();
+      }
+
+      // ---- D3 drag for control points (like blueprint.html) ----
+      function attachDrag() {
+        const params = computeGridParams();
+
+        linksGroup.selectAll("circle").call(d3.drag()
+          .on("start", function(event, d) {
+            isDragging = true;
+            d3.select(this).attr("stroke-dasharray", null);
+          })
+          .on("drag", function(event, d) {
+            const source = event.sourceEvent;
+            const clientX = source.clientX !== undefined ? source.clientX
+                          : source.changedTouches ? source.changedTouches[0].clientX : event.x;
+            const clientY = source.clientY !== undefined ? source.clientY
+                          : source.changedTouches ? source.changedTouches[0].clientY : event.y;
+            const wpt = screenToWorld(clientX, clientY);
+
+            // Snap to half-grid (like blueprint.html)
+            const p = computeGridParams();
+            const nearestX = p.centerX + Math.round((wpt.x - p.centerX) / p.halfSpacing) * p.halfSpacing;
+            const nearestY = p.centerY + Math.round((wpt.y - p.centerY) / p.halfSpacing) * p.halfSpacing;
+            const dist = Math.hypot(wpt.x - nearestX, wpt.y - nearestY);
+            const nx = dist < p.snapThreshold ? nearestX : wpt.x;
+            const ny = dist < p.snapThreshold ? nearestY : wpt.y;
+
+            const link = links[d.linkIndex];
+
+            if (d.pointType === "center") {
+              // Move all three points (start, center, end) together
+              const dx = nx - link.center.x;
+              const dy = ny - link.center.y;
+              link.center.x = nx;
+              link.center.y = ny;
+              link.start.x += dx;
+              link.start.y += dy;
+              link.end.x += dx;
+              link.end.y += dy;
+            } else {
+              link[d.pointType].x = nx;
+              link[d.pointType].y = ny;
+            }
+
+            d3.select(this).attr("cx", link[d.pointType === "center" ? "center" : d.pointType].x)
+                           .attr("cy", link[d.pointType === "center" ? "center" : d.pointType].y);
+
+            updateLink(d.linkIndex);
+          })
+          .on("end", function(event, d) {
+            isDragging = false;
+            d3.select(this).attr("stroke-dasharray", "4 2");
+            saveSettings();
+          })
+        );
       }
 
       // ---- Init ----
+      width = innerWidth;
+      height = innerHeight;
+      initLinks();
       render();
-      addEventListener("resize", render);
+      addEventListener("resize", () => {
+        // On resize, re-render (grid params change)
+        width = innerWidth;
+        height = innerHeight;
+        render();
+      });
     })();
   </script>
 </body>
