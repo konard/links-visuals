@@ -65,7 +65,7 @@
 </head>
 <body>
   <div id="config-panel">
-    <label>Links: <input type="range" id="linkCountSlider" min="1" max="64" value="1" step="1"> <span class="val" id="linkCountVal">1</span></label>
+    <label>Links: <input type="range" id="linkCountSlider" min="1" max="64" value="4" step="1"> <span class="val" id="linkCountVal">4</span></label>
     <button id="resetBtn" title="Reset layout to defaults">Reset</button>
   </div>
 
@@ -108,7 +108,7 @@
       }
 
       // ---- State ----
-      let linkCount = 1;
+      let linkCount = 4;
       let width = 0, height = 0;
 
       // Zoom/pan state
@@ -160,9 +160,9 @@
       // ---- Reset ----
       document.getElementById("resetBtn").addEventListener("click", () => {
         localStorage.removeItem(STORAGE_KEY);
-        linkCount = 1;
-        linkCountSlider.value = 1;
-        linkCountVal.textContent = "1";
+        linkCount = 4;
+        linkCountSlider.value = 4;
+        linkCountVal.textContent = "4";
         canvasScale = 1;
         canvasOffsetX = 0;
         canvasOffsetY = 0;
@@ -318,40 +318,66 @@
           .attr("fill", "url(#grid-pattern-major)");
       }
 
-      // ---- Markers (from blueprint) ----
-      function initMarkers() {
-        defs.select("#cross-marker").remove();
-        defs.select("#arrow-marker").remove();
+      // ---- Color generation ----
+      function getLinkColor(index, total) {
+        // Evenly spaced hues across the RGB spectrum
+        const hue = (index / total) * 360;
+        return `hsl(${hue}, 80%, 45%)`;
+      }
 
-        defs.append("marker")
-          .attr("id", "cross-marker")
-          .attr("viewBox", "0 0 100 100")
-          .attr("markerWidth", 100).attr("markerHeight", 100)
-          .attr("refX", 50).attr("refY", 50)
-          .attr("orient", "auto")
-          .append("g").call(g => {
-            g.append("line")
-             .attr("x1", 62.5 - (12.5 - 12.5/1.618)).attr("y1", 25 + 14.5 - 0.23)
-             .attr("x2", 62.5 - (12.5 - 12.5/1.618)).attr("y2", 75 - 14.5 + 0.23)
-             .attr("stroke", "black");
-          });
+      function getLinkColorHex(index, total) {
+        // Convert HSL to hex for markers
+        const hue = (index / total) * 360;
+        const s = 0.80, l = 0.45;
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+        const m = l - c / 2;
+        let r, g, b;
+        if (hue < 60)       { r = c; g = x; b = 0; }
+        else if (hue < 120) { r = x; g = c; b = 0; }
+        else if (hue < 180) { r = 0; g = c; b = x; }
+        else if (hue < 240) { r = 0; g = x; b = c; }
+        else if (hue < 300) { r = x; g = 0; b = c; }
+        else                { r = c; g = 0; b = x; }
+        const toHex = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      }
 
-        defs.append("marker")
-          .attr("id", "arrow-marker")
-          .attr("viewBox", "0 0 100 100")
-          .attr("markerWidth", 100).attr("markerHeight", 100)
-          .attr("refX", 10).attr("refY", 50)
-          .attr("orient", "auto")
-          .append("g").call(g => {
-            g.append("line")
-             .attr("x1", 10 + 0.35).attr("y1", 50 + 0.35)
-             .attr("x2", 0 - 0.35).attr("y2", 40 - 0.35)
-             .attr("stroke", "black");
-            g.append("line")
-             .attr("x1", 10 + 0.35).attr("y1", 50 - 0.35)
-             .attr("x2", 0 - 0.35).attr("y2", 60 + 0.35)
-             .attr("stroke", "black");
-          });
+      // ---- Markers (per-link colored, from blueprint) ----
+      function initMarkers(count) {
+        defs.selectAll("marker").remove();
+        for (let i = 0; i < count; i++) {
+          const color = getLinkColorHex(i, count);
+          defs.append("marker")
+            .attr("id", `cross-marker-${i}`)
+            .attr("viewBox", "0 0 100 100")
+            .attr("markerWidth", 100).attr("markerHeight", 100)
+            .attr("refX", 50).attr("refY", 50)
+            .attr("orient", "auto")
+            .append("g").call(g => {
+              g.append("line")
+               .attr("x1", 62.5 - (12.5 - 12.5/1.618)).attr("y1", 25 + 14.5 - 0.23)
+               .attr("x2", 62.5 - (12.5 - 12.5/1.618)).attr("y2", 75 - 14.5 + 0.23)
+               .attr("stroke", color);
+            });
+
+          defs.append("marker")
+            .attr("id", `arrow-marker-${i}`)
+            .attr("viewBox", "0 0 100 100")
+            .attr("markerWidth", 100).attr("markerHeight", 100)
+            .attr("refX", 10).attr("refY", 50)
+            .attr("orient", "auto")
+            .append("g").call(g => {
+              g.append("line")
+               .attr("x1", 10 + 0.35).attr("y1", 50 + 0.35)
+               .attr("x2", 0 - 0.35).attr("y2", 40 - 0.35)
+               .attr("stroke", color);
+              g.append("line")
+               .attr("x1", 10 + 0.35).attr("y1", 50 - 0.35)
+               .attr("x2", 0 - 0.35).attr("y2", 60 + 0.35)
+               .attr("stroke", color);
+            });
+        }
       }
 
       // ---- Path building (from path.mjs, adapted for arbitrary points array) ----
@@ -397,22 +423,26 @@
         const gridSize = Math.ceil(Math.sqrt(linkCount));
 
         // Grid spacing: fit the grid in the viewport with padding
+        // Each link occupies 1 unit, with 1 unit gap between links,
+        // so total span = gridSize units (links) + (gridSize - 1) units (gaps) = 2*gridSize - 1 units
         const availableSize = Math.min(width, height) * (1 - 2 * paddingFraction);
-        const cellSpacing = gridSize > 1 ? availableSize / (gridSize - 1) : availableSize;
-        // The segment length for each self-referencing link
-        // Use a fraction of cellSpacing so the figure-eight fits nicely within the cell
-        const segLen = gridSize > 1 ? cellSpacing * 0.35 : Math.min(width, height) * 0.1;
+        const gridUnit = availableSize / (2 * gridSize - 1);
+        // Cell spacing = 2 grid units (1 for link + 1 for gap)
+        const cellSpacing = gridSize > 1 ? 2 * gridUnit : availableSize;
+        // The segment length for each self-referencing link fits within one grid unit
+        const segLen = gridUnit * 0.35;
 
-        const gridSpacing = cellSpacing;
-        const halfSpacing = cellSpacing / 2;
+        const gridSpacing = gridUnit;
+        const halfSpacing = gridUnit / 2;
 
         drawBackgroundGrid(centerX, centerY, gridSpacing, halfSpacing);
-        initMarkers();
+        initMarkers(linkCount);
 
         // Clear previous links
         linksGroup.selectAll("*").remove();
 
-        const strokeW = strokeFraction * segLen / 0.085 * 0.085; // = strokeFraction * segLen
+        // Control point radius scales with grid unit
+        const cpRadius = gridUnit * 0.08;
 
         // Compute grid positions
         const gridStartX = centerX - (gridSize - 1) * cellSpacing / 2;
@@ -423,6 +453,8 @@
           const row = Math.floor(i / gridSize);
           const cx = gridStartX + col * cellSpacing;
           const cy = gridStartY + row * cellSpacing;
+
+          const linkColor = getLinkColor(i, linkCount);
 
           // Self-referencing: start = end = center
           const center = { x: cx, y: cy };
@@ -449,13 +481,36 @@
 
           const pathData = buildPathData(pts, segLen);
 
+          // Draw link path with per-link color
           linksGroup.append("path")
             .attr("fill", "none")
-            .attr("stroke", "black")
+            .attr("stroke", linkColor)
             .attr("stroke-width", strokeFraction * segLen)
-            .attr("marker-start", "url(#cross-marker)")
-            .attr("marker-end", "url(#arrow-marker)")
+            .attr("marker-start", `url(#cross-marker-${i})`)
+            .attr("marker-end", `url(#arrow-marker-${i})`)
             .attr("d", pathData);
+
+          // Draw control points like blueprint.html
+          // Start: link's color + 0.5 opacity green overlay
+          linksGroup.append("circle")
+            .attr("cx", start.x).attr("cy", start.y).attr("r", cpRadius)
+            .attr("fill", linkColor).attr("opacity", 0.8)
+            .attr("stroke", "green").attr("stroke-width", cpRadius * 0.3)
+            .attr("stroke-opacity", 0.5);
+
+          // Center: link's color
+          linksGroup.append("circle")
+            .attr("cx", center.x).attr("cy", center.y).attr("r", cpRadius)
+            .attr("fill", linkColor).attr("opacity", 0.8)
+            .attr("stroke", linkColor).attr("stroke-width", cpRadius * 0.3)
+            .attr("stroke-dasharray", "4 2");
+
+          // End: link's color + 0.5 opacity red overlay
+          linksGroup.append("circle")
+            .attr("cx", end.x).attr("cy", end.y).attr("r", cpRadius)
+            .attr("fill", linkColor).attr("opacity", 0.8)
+            .attr("stroke", "red").attr("stroke-width", cpRadius * 0.3)
+            .attr("stroke-opacity", 0.5);
         }
       }
 
