@@ -338,27 +338,47 @@
       }
 
       // ---- Color generation ----
-      function getLinkColor(index, total) {
+      function hslToRgb(h, s, l) {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+        const m = l - c / 2;
+        let r, g, b;
+        if (h < 60)       { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else               { r = c; g = 0; b = x; }
+        return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+      }
+
+      function getLinkRgb(index, total) {
         const hue = (index / total) * 360;
-        return `hsl(${hue}, 80%, 45%)`;
+        return hslToRgb(hue, 0.80, 0.45);
+      }
+
+      function getLinkColor(index, total) {
+        const [r, g, b] = getLinkRgb(index, total);
+        return `rgb(${r},${g},${b})`;
       }
 
       function getLinkColorHex(index, total) {
-        const hue = (index / total) * 360;
-        const s = 0.80, l = 0.45;
-        const c = (1 - Math.abs(2 * l - 1)) * s;
-        const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
-        const m = l - c / 2;
-        let r, g, b;
-        if (hue < 60)       { r = c; g = x; b = 0; }
-        else if (hue < 120) { r = x; g = c; b = 0; }
-        else if (hue < 180) { r = 0; g = c; b = x; }
-        else if (hue < 240) { r = 0; g = x; b = c; }
-        else if (hue < 300) { r = x; g = 0; b = c; }
-        else                { r = c; g = 0; b = x; }
-        const toHex = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+        const [r, g, b] = getLinkRgb(index, total);
+        const toHex = v => v.toString(16).padStart(2, '0');
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
       }
+
+      // Blend link color with an overlay color at 0.5 opacity
+      // Result: overlay * 0.5 + linkColor * 0.5
+      function blendColor(linkRgb, overlayRgb) {
+        const r = Math.round(linkRgb[0] * 0.5 + overlayRgb[0] * 0.5);
+        const g = Math.round(linkRgb[1] * 0.5 + overlayRgb[1] * 0.5);
+        const b = Math.round(linkRgb[2] * 0.5 + overlayRgb[2] * 0.5);
+        return `rgb(${r},${g},${b})`;
+      }
+
+      const GREEN_RGB = [0, 128, 0];
+      const RED_RGB   = [255, 0, 0];
 
       // ---- Markers (per-link colored, from blueprint) ----
       function initMarkers(count) {
@@ -467,22 +487,21 @@
 
         for (let i = 0; i < linkCount; i++) {
           const defPos = defaultPosition(i, params);
-          let start, center, end;
+          // Center is always fixed at grid position
+          let center = { ...defPos };
+          let start, end;
 
           if (i < savedPositions.length && savedData?.linkCount === linkCount) {
-            // Restore saved positions
+            // Restore saved start/end positions
             start  = { ...savedPositions[i].start };
-            center = { ...savedPositions[i].center };
             end    = { ...savedPositions[i].end };
           } else if (i < oldLinks.length) {
-            // Keep existing positions when changing link count
+            // Keep existing start/end when changing link count
             start  = { ...oldLinks[i].start };
-            center = { ...oldLinks[i].center };
             end    = { ...oldLinks[i].end };
           } else {
-            // Self-referencing default: all three at the same position
+            // Self-referencing default: start and end at center
             start  = { ...defPos };
-            center = { ...defPos };
             end    = { ...defPos };
           }
 
@@ -574,22 +593,14 @@
           // - fill: transparent (rgba(0,0,0,0))
           // - stroke-dasharray: "4 2"
           // - stroke-width: 2
-          // - stroke color: green for start, link color for center, red for end
+          // Colors: link's color + 0.5 opacity green (start),
+          //         link's color (center),
+          //         link's color + 0.5 opacity red (end)
+          const linkRgb = getLinkRgb(i, linkCount);
+          const startColor = blendColor(linkRgb, GREEN_RGB);
+          const endColor   = blendColor(linkRgb, RED_RGB);
 
-          // Start control point: green stroke
-          linksGroup.append("circle")
-            .attr("class", `cp-start-${i}`)
-            .attr("cx", link.start.x).attr("cy", link.start.y)
-            .attr("r", params.cpRadius)
-            .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", "green")
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
-            .style("pointer-events", "auto")
-            .style("cursor", "grab")
-            .datum({ linkIndex: i, pointType: "start" });
-
-          // Center control point: link color stroke
+          // Center control point: link color stroke (not draggable, fixed position)
           linksGroup.append("circle")
             .attr("class", `cp-center-${i}`)
             .attr("cx", link.center.x).attr("cy", link.center.y)
@@ -598,17 +609,28 @@
             .attr("stroke", linkColor)
             .attr("stroke-dasharray", "4 2")
             .attr("stroke-width", 2)
+            .style("pointer-events", "none");
+
+          // Start control point: link color blended with green
+          linksGroup.append("circle")
+            .attr("class", `cp-start-${i}`)
+            .attr("cx", link.start.x).attr("cy", link.start.y)
+            .attr("r", params.cpRadius)
+            .attr("fill", "rgba(0,0,0,0)")
+            .attr("stroke", startColor)
+            .attr("stroke-dasharray", "4 2")
+            .attr("stroke-width", 2)
             .style("pointer-events", "auto")
             .style("cursor", "grab")
-            .datum({ linkIndex: i, pointType: "center" });
+            .datum({ linkIndex: i, pointType: "start" });
 
-          // End control point: red stroke
+          // End control point: link color blended with red
           linksGroup.append("circle")
             .attr("class", `cp-end-${i}`)
             .attr("cx", link.end.x).attr("cy", link.end.y)
             .attr("r", params.cpRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", "red")
+            .attr("stroke", endColor)
             .attr("stroke-dasharray", "4 2")
             .attr("stroke-width", 2)
             .style("pointer-events", "auto")
@@ -620,11 +642,13 @@
         attachDrag();
       }
 
-      // ---- D3 drag for control points (like blueprint.html) ----
+      // ---- D3 drag for start/end control points (like blueprint.html) ----
+      // Center is fixed (not movable), only start and end are draggable.
       function attachDrag() {
-        const params = computeGridParams();
-
-        linksGroup.selectAll("circle").call(d3.drag()
+        linksGroup.selectAll("circle").filter(function() {
+          const cls = d3.select(this).attr("class") || "";
+          return cls.startsWith("cp-start-") || cls.startsWith("cp-end-");
+        }).call(d3.drag()
           .on("start", function(event, d) {
             isDragging = true;
             d3.select(this).attr("stroke-dasharray", null);
@@ -646,25 +670,10 @@
             const ny = dist < p.snapThreshold ? nearestY : wpt.y;
 
             const link = links[d.linkIndex];
+            link[d.pointType].x = nx;
+            link[d.pointType].y = ny;
 
-            if (d.pointType === "center") {
-              // Move all three points (start, center, end) together
-              const dx = nx - link.center.x;
-              const dy = ny - link.center.y;
-              link.center.x = nx;
-              link.center.y = ny;
-              link.start.x += dx;
-              link.start.y += dy;
-              link.end.x += dx;
-              link.end.y += dy;
-            } else {
-              link[d.pointType].x = nx;
-              link[d.pointType].y = ny;
-            }
-
-            d3.select(this).attr("cx", link[d.pointType === "center" ? "center" : d.pointType].x)
-                           .attr("cy", link[d.pointType === "center" ? "center" : d.pointType].y);
-
+            d3.select(this).attr("cx", nx).attr("cy", ny);
             updateLink(d.linkIndex);
           })
           .on("end", function(event, d) {
