@@ -18,7 +18,7 @@ jobs:
           node-version: 20
 
       - name: Run unit tests
-        run: node --test tests/zoom-pan.unit.test.mjs
+        run: npm test
 
   e2e:
     name: E2E tests
@@ -57,5 +57,10 @@ jobs:
 
       - name: Run blueprint E2E tests
         run: RUN_E2E=true node --test tests/blueprint.e2e.test.mjs
+        env:
+          TEST_URL: http://localhost:8080
+
+      - name: Run grid E2E tests
+        run: RUN_E2E=true node --test tests/grid.e2e.test.mjs
         env:
           TEST_URL: http://localhost:8080

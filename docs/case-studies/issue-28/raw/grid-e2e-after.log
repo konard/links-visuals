@@ -1,0 +1,27 @@
+TAP version 13
+# Subtest: grid.html - E2E tests
+    # Subtest: renders blueprint-style link proportions for each grid cell
+    ok 1 - renders blueprint-style link proportions for each grid cell
+      ---
+      duration_ms: 1372.264485
+      ...
+    # Subtest: reset restores the default self-referencing layout
+    ok 2 - reset restores the default self-referencing layout
+      ---
+      duration_ms: 1073.355283
+      ...
+    1..2
+ok 1 - grid.html - E2E tests
+  ---
+  duration_ms: 3136.175568
+  type: 'suite'
+  ...
+1..1
+# tests 2
+# suites 1
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3231.834253
