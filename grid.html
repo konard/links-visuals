@@ -76,19 +76,17 @@
     (async () => {
       const d3 = await use('d3');
 
-      const { computeIntermediatePoints } = await import('./js/ik-pure.mjs');
       const {
-        paddingFraction, radiusFraction, strokeFraction,
-        sideTolFraction, IK_SEG_COUNT, snapFraction,
+        paddingFraction,
         MIN_SCALE, MAX_SCALE
       } = await import('./js/constants.mjs');
       const {
-        vectorAdd, vectorSubtract, vectorScale, offsetPoint
-      } = await import('./js/geometry.mjs');
-
-      // ---- Constants (from blueprint defaults) ----
-      const START_OFFSET_FRACTION = 0.10;
-      const END_OFFSET_FRACTION   = 0.16;
+        appendBlueprintEndpointMarkers,
+        buildBlueprintPathData,
+        computeBlueprintLinkPoints,
+        createBlueprintMetrics,
+        CONTROL_POINT_COLORS,
+      } = await import('./js/blueprint-link.mjs');
 
       // ---- LocalStorage ----
       const STORAGE_KEY = 'grid-settings';
@@ -96,11 +94,10 @@
       function saveSettings() {
         try {
           const linkPositions = links.map(l => ({
-            start: { x: l.start.x, y: l.start.y },
-            center: { x: l.center.x, y: l.center.y },
-            end: { x: l.end.x, y: l.end.y },
+            startFactor: { x: l.startFactor.x, y: l.startFactor.y },
+            endFactor: { x: l.endFactor.x, y: l.endFactor.y },
           }));
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ linkCount, linkPositions }));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, linkCount, linkPositions }));
         } catch {}
       }
 
@@ -115,7 +112,7 @@
       // ---- State ----
       let linkCount = 4;
       let width = 0, height = 0;
-      let links = [];       // per-link state: { start, center, end, ik, preferRight, preferLeft }
+      let links = [];       // per-link state: { startFactor, endFactor, start, center, end, preferRight, preferLeft }
       let isDragging = false; // true when a control point is being dragged
 
       // Zoom/pan state
@@ -175,7 +172,7 @@
         canvasOffsetX = 0;
         canvasOffsetY = 0;
         applyTransform();
-        initLinks();
+        initLinks({ restoreSaved: false, preserveExisting: false });
         render();
       });
 
@@ -368,83 +365,17 @@
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
       }
 
-      // Blend link color with an overlay color at 0.5 opacity
-      // Result: overlay * 0.5 + linkColor * 0.5
-      function blendColor(linkRgb, overlayRgb) {
-        const r = Math.round(linkRgb[0] * 0.5 + overlayRgb[0] * 0.5);
-        const g = Math.round(linkRgb[1] * 0.5 + overlayRgb[1] * 0.5);
-        const b = Math.round(linkRgb[2] * 0.5 + overlayRgb[2] * 0.5);
-        return `rgb(${r},${g},${b})`;
-      }
-
-      const GREEN_RGB = [0, 128, 0];
-      const RED_RGB   = [255, 0, 0];
-
       // ---- Markers (per-link colored, from blueprint) ----
       function initMarkers(count) {
         defs.selectAll("marker").remove();
         for (let i = 0; i < count; i++) {
           const color = getLinkColorHex(i, count);
-          defs.append("marker")
-            .attr("id", `cross-marker-${i}`)
-            .attr("viewBox", "0 0 100 100")
-            .attr("markerWidth", 100).attr("markerHeight", 100)
-            .attr("refX", 50).attr("refY", 50)
-            .attr("orient", "auto")
-            .append("g").call(g => {
-              g.append("line")
-               .attr("x1", 62.5 - (12.5 - 12.5/1.618)).attr("y1", 25 + 14.5 - 0.23)
-               .attr("x2", 62.5 - (12.5 - 12.5/1.618)).attr("y2", 75 - 14.5 + 0.23)
-               .attr("stroke", color);
-            });
-
-          defs.append("marker")
-            .attr("id", `arrow-marker-${i}`)
-            .attr("viewBox", "0 0 100 100")
-            .attr("markerWidth", 100).attr("markerHeight", 100)
-            .attr("refX", 10).attr("refY", 50)
-            .attr("orient", "auto")
-            .append("g").call(g => {
-              g.append("line")
-               .attr("x1", 10 + 0.35).attr("y1", 50 + 0.35)
-               .attr("x2", 0 - 0.35).attr("y2", 40 - 0.35)
-               .attr("stroke", color);
-              g.append("line")
-               .attr("x1", 10 + 0.35).attr("y1", 50 - 0.35)
-               .attr("x2", 0 - 0.35).attr("y2", 60 + 0.35)
-               .attr("stroke", color);
-            });
+          appendBlueprintEndpointMarkers(defs, {
+            crossId: `cross-marker-${i}`,
+            arrowId: `arrow-marker-${i}`,
+            color,
+          });
         }
-      }
-
-      // ---- Path building (from path.mjs, adapted for arbitrary points array) ----
-      function buildPathData(points, segLen) {
-        const last = points.length - 1;
-        const startOffset = START_OFFSET_FRACTION * segLen;
-        const endOffset   = END_OFFSET_FRACTION   * segLen;
-        const geoStart = offsetPoint(points[0], points[1], startOffset);
-        const geoEnd   = offsetPoint(points[last], points[last-1], endOffset);
-
-        const pathPoints = points.map((p, i) =>
-          i === 0    ? { x: geoStart.x, y: geoStart.y } :
-          i === last ? { x: geoEnd.x,   y: geoEnd.y   } :
-          p
-        );
-
-        const tangents = pathPoints.map((p, i) => {
-          if (i === 0) return vectorSubtract(pathPoints[1], pathPoints[0]);
-          if (i === pathPoints.length - 1) return vectorSubtract(pathPoints[i], pathPoints[i-1]);
-          return vectorScale(vectorSubtract(pathPoints[i+1], pathPoints[i-1]), 0.5);
-        });
-
-        let d = `M ${pathPoints[0].x} ${pathPoints[0].y} `;
-        for (let i = 0; i < pathPoints.length - 1; i++) {
-          const cp = pathPoints[i], np = pathPoints[i+1];
-          const c1 = vectorAdd(cp, vectorScale(tangents[i], 1/3));
-          const c2 = vectorSubtract(np, vectorScale(tangents[i+1], 1/3));
-          d += `C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${np.x} ${np.y} `;
-        }
-        return d;
       }
 
       // ---- Compute current grid layout parameters ----
@@ -453,17 +384,12 @@
         const centerY = height / 2;
         const gridSize = Math.ceil(Math.sqrt(linkCount));
         const availableSize = Math.min(width, height) * (1 - 2 * paddingFraction);
-        const gridUnit = availableSize / (2 * gridSize - 1);
-        const cellSpacing = gridSize > 1 ? 2 * gridUnit : availableSize;
-        const segLen = gridUnit * 0.35;
-        const gridSpacing = gridUnit;
-        const halfSpacing = gridUnit / 2;
+        const gridSpacing = availableSize / (9 * gridSize - 1);
+        const cellSpacing = 9 * gridSpacing;
+        const metrics = createBlueprintMetrics(gridSpacing);
         const gridStartX = centerX - (gridSize - 1) * cellSpacing / 2;
         const gridStartY = centerY - (gridSize - 1) * cellSpacing / 2;
-        const snapThreshold = snapFraction * gridSpacing;
-        const cpRadius = radiusFraction * gridSpacing;
-        return { centerX, centerY, gridSize, gridUnit, cellSpacing, segLen,
-                 gridSpacing, halfSpacing, gridStartX, gridStartY, snapThreshold, cpRadius };
+        return { centerX, centerY, gridSize, cellSpacing, gridStartX, gridStartY, ...metrics };
       }
 
       // ---- Default grid position for link i ----
@@ -475,70 +401,107 @@
         return { x: cx, y: cy };
       }
 
+      function zeroFactor() {
+        return { x: 0, y: 0 };
+      }
+
+      function factorToPoint(center, factor, params) {
+        return {
+          x: center.x + factor.x * params.gridSpacing,
+          y: center.y + factor.y * params.gridSpacing,
+        };
+      }
+
+      function pointToFactor(point, center, params) {
+        return {
+          x: (point.x - center.x) / params.gridSpacing,
+          y: (point.y - center.y) / params.gridSpacing,
+        };
+      }
+
+      function factorsFromSavedPosition(savedPosition, center, params) {
+        if (savedPosition?.startFactor && savedPosition?.endFactor) {
+          return {
+            startFactor: { ...savedPosition.startFactor },
+            endFactor: { ...savedPosition.endFactor },
+          };
+        }
+
+        if (savedPosition?.start && savedPosition?.end) {
+          const savedCenter = savedPosition.center || center;
+          return {
+            startFactor: pointToFactor(savedPosition.start, savedCenter, params),
+            endFactor: pointToFactor(savedPosition.end, savedCenter, params),
+          };
+        }
+
+        return { startFactor: zeroFactor(), endFactor: zeroFactor() };
+      }
+
+      function syncLinkToGrid(link, index, params) {
+        const center = defaultPosition(index, params);
+        link.center = { ...center };
+        link.start = factorToPoint(center, link.startFactor, params);
+        link.end = factorToPoint(center, link.endFactor, params);
+      }
+
+      function syncLinksToGrid(params) {
+        for (let i = 0; i < links.length; i++) {
+          syncLinkToGrid(links[i], i, params);
+        }
+      }
+
       // ---- Initialize link state ----
-      function initLinks() {
+      function initLinks({ restoreSaved = true, preserveExisting = true } = {}) {
         const params = computeGridParams();
-        const oldLinks = links;
+        const oldLinks = preserveExisting ? links : [];
         links = [];
 
         // Try to restore from saved settings
-        const savedData = loadSettings();
+        const savedData = restoreSaved ? loadSettings() : null;
         const savedPositions = savedData?.linkPositions || [];
 
         for (let i = 0; i < linkCount; i++) {
           const defPos = defaultPosition(i, params);
-          // Center is always fixed at grid position
-          let center = { ...defPos };
-          let start, end;
+          let startFactor, endFactor;
 
           if (i < savedPositions.length && savedData?.linkCount === linkCount) {
-            // Restore saved start/end positions
-            start  = { ...savedPositions[i].start };
-            end    = { ...savedPositions[i].end };
+            ({ startFactor, endFactor } = factorsFromSavedPosition(savedPositions[i], defPos, params));
           } else if (i < oldLinks.length) {
-            // Keep existing start/end when changing link count
-            start  = { ...oldLinks[i].start };
-            end    = { ...oldLinks[i].end };
+            startFactor = { ...oldLinks[i].startFactor };
+            endFactor = { ...oldLinks[i].endFactor };
           } else {
             // Self-referencing default: start and end at center
-            start  = { ...defPos };
-            end    = { ...defPos };
+            startFactor = zeroFactor();
+            endFactor = zeroFactor();
           }
 
-          links.push({
-            start, center, end,
+          const link = {
+            startFactor, endFactor,
+            start: { ...defPos }, center: { ...defPos }, end: { ...defPos },
             preferRight: 0, preferLeft: 0,
-          });
+          };
+          syncLinkToGrid(link, i, params);
+          links.push(link);
         }
       }
 
-      // ---- Recompute IK for a single link ----
-      function recomputeIK(link, segLen) {
-        const maxReach = IK_SEG_COUNT * segLen;
-        const sideTolerance = sideTolFraction * segLen;
-        const ik = computeIntermediatePoints(
-          link.center, link.start, link.end,
-          segLen, maxReach, sideTolerance,
-          link.preferRight, link.preferLeft
-        );
-        link.preferRight = ik.preferRight;
-        link.preferLeft  = ik.preferLeft;
-        return ik;
+      // ---- Build blueprint-style render data for a single link ----
+      function getLinkRenderData(link, params) {
+        const result = computeBlueprintLinkPoints(link, params);
+        link.preferRight = result.preferRight;
+        link.preferLeft = result.preferLeft;
+        return {
+          points: result.points,
+          pathData: buildBlueprintPathData(result.points, params.gridSpacing),
+        };
       }
 
       // ---- Update a single link's path and control points (no full re-render) ----
       function updateLink(i) {
         const params = computeGridParams();
         const link = links[i];
-        const ik = recomputeIK(link, params.segLen);
-
-        const pts = [
-          link.start, ik.p1, ik.p2, ik.p3,
-          link.center,
-          ik.p4, ik.p5, ik.p6,
-          link.end,
-        ];
-        const pathData = buildPathData(pts, params.segLen);
+        const { points, pathData } = getLinkRenderData(link, params);
 
         // Update path
         linksGroup.select(`path.link-${i}`).attr("d", pathData);
@@ -550,6 +513,13 @@
           .attr("cx", link.center.x).attr("cy", link.center.y);
         linksGroup.select(`circle.cp-end-${i}`)
           .attr("cx", link.end.x).attr("cy", link.end.y);
+
+        // Update IK-controlled intermediate points (they follow start/end).
+        for (const idx of [1, 2, 3, 5, 6, 7]) {
+          const point = points[idx];
+          linksGroup.select(`circle.cp-int-${i}-${idx}`)
+            .attr("cx", point.x).attr("cy", point.y);
+        }
       }
 
       // ---- Main render ----
@@ -559,6 +529,7 @@
         svg.attr("width", width).attr("height", height);
 
         const params = computeGridParams();
+        syncLinksToGrid(params);
 
         drawBackgroundGrid(params.centerX, params.centerY, params.gridSpacing, params.halfSpacing);
         initMarkers(linkCount);
@@ -566,73 +537,84 @@
         // Clear previous links
         linksGroup.selectAll("*").remove();
 
+        // Point indices in the blueprint points array that are IK-controlled
+        // intermediates (p1, p2, p3 then p4, p5, p6); 0/4/8 are start/center/end.
+        const INTERMEDIATE_INDICES = [1, 2, 3, 5, 6, 7];
+
         for (let i = 0; i < linkCount; i++) {
           const link = links[i];
           const linkColor = getLinkColor(i, linkCount);
-          const ik = recomputeIK(link, params.segLen);
-
-          const pts = [
-            link.start, ik.p1, ik.p2, ik.p3,
-            link.center,
-            ik.p4, ik.p5, ik.p6,
-            link.end,
-          ];
-          const pathData = buildPathData(pts, params.segLen);
+          const { points, pathData } = getLinkRenderData(link, params);
 
           // Draw link path with per-link color
           linksGroup.append("path")
             .attr("class", `link-${i}`)
             .attr("fill", "none")
             .attr("stroke", linkColor)
-            .attr("stroke-width", strokeFraction * params.segLen)
+            .attr("stroke-width", params.strokeWidth)
             .attr("marker-start", `url(#cross-marker-${i})`)
             .attr("marker-end", `url(#arrow-marker-${i})`)
             .attr("d", pathData);
 
-          // Control points styled like blueprint.html:
+          // Control points styled EXACTLY like blueprint.html — the per-link
+          // color only applies to the link itself (path + markers), never to
+          // the control points. The semantic colors (green = start, red = end,
+          // black = center, blue = intermediate) stay fixed across every link,
+          // just like single mode.
           // - fill: transparent (rgba(0,0,0,0))
-          // - stroke-dasharray: "4 2"
-          // - stroke-width: 2
-          // Colors: link's color + 0.5 opacity green (start),
-          //         link's color (center),
-          //         link's color + 0.5 opacity red (end)
-          const linkRgb = getLinkRgb(i, linkCount);
-          const startColor = blendColor(linkRgb, GREEN_RGB);
-          const endColor   = blendColor(linkRgb, RED_RGB);
+          // - stroke-dasharray: "4 2"  (blueprint.html value)
+          // - stroke-width: 1          (blueprint.html value)
+          // - radius: proportional to grid spacing, so each link is a faithful
+          //   miniature of the single-link blueprint at its own scale.
 
-          // Center control point: link color stroke (not draggable, fixed position)
+          // Center control point: black stroke (not draggable, fixed position)
           linksGroup.append("circle")
             .attr("class", `cp-center-${i}`)
             .attr("cx", link.center.x).attr("cy", link.center.y)
-            .attr("r", params.cpRadius)
+            .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", linkColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.center)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "none");
 
-          // Start control point: link color blended with green
+          // Intermediate control points: blue (IK-controlled, not draggable),
+          // exactly like blueprint.html in auto layout mode.
+          for (const idx of INTERMEDIATE_INDICES) {
+            const point = points[idx];
+            linksGroup.append("circle")
+              .attr("class", `cp-int-${i}-${idx}`)
+              .attr("cx", point.x).attr("cy", point.y)
+              .attr("r", params.circleRadius)
+              .attr("fill", "rgba(0,0,0,0)")
+              .attr("stroke", CONTROL_POINT_COLORS.intermediate)
+              .attr("stroke-dasharray", params.cpDashArray)
+              .attr("stroke-width", params.cpStrokeWidth)
+              .style("pointer-events", "none");
+          }
+
+          // Start control point: green (matches blueprint.html)
           linksGroup.append("circle")
             .attr("class", `cp-start-${i}`)
             .attr("cx", link.start.x).attr("cy", link.start.y)
-            .attr("r", params.cpRadius)
+            .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", startColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.start)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "auto")
             .style("cursor", "grab")
             .datum({ linkIndex: i, pointType: "start" });
 
-          // End control point: link color blended with red
+          // End control point: red (matches blueprint.html)
           linksGroup.append("circle")
             .attr("class", `cp-end-${i}`)
             .attr("cx", link.end.x).attr("cy", link.end.y)
-            .attr("r", params.cpRadius)
+            .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", endColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.end)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "auto")
             .style("cursor", "grab")
             .datum({ linkIndex: i, pointType: "end" });
@@ -663,13 +645,13 @@
 
             // Snap to half-grid (like blueprint.html)
             const p = computeGridParams();
-            const nearestX = p.centerX + Math.round((wpt.x - p.centerX) / p.halfSpacing) * p.halfSpacing;
-            const nearestY = p.centerY + Math.round((wpt.y - p.centerY) / p.halfSpacing) * p.halfSpacing;
+            const link = links[d.linkIndex];
+            const nearestX = link.center.x + Math.round((wpt.x - link.center.x) / p.halfSpacing) * p.halfSpacing;
+            const nearestY = link.center.y + Math.round((wpt.y - link.center.y) / p.halfSpacing) * p.halfSpacing;
             const dist = Math.hypot(wpt.x - nearestX, wpt.y - nearestY);
             const nx = dist < p.snapThreshold ? nearestX : wpt.x;
             const ny = dist < p.snapThreshold ? nearestY : wpt.y;
 
-            const link = links[d.linkIndex];
             link[d.pointType].x = nx;
             link[d.pointType].y = ny;
 
@@ -678,6 +660,9 @@
           })
           .on("end", function(event, d) {
             isDragging = false;
+            const p = computeGridParams();
+            const link = links[d.linkIndex];
+            link[`${d.pointType}Factor`] = pointToFactor(link[d.pointType], link.center, p);
             d3.select(this).attr("stroke-dasharray", "4 2");
             saveSettings();
           })

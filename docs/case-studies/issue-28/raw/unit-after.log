@@ -1,0 +1,325 @@
+
+> links-visuals@1.0.0 test
+> node --test tests/zoom-pan.unit.test.mjs tests/ik-symmetry.unit.test.mjs tests/blueprint-link.unit.test.mjs
+
+TAP version 13
+# Subtest: blueprint link helpers
+    # Subtest: derive every visual metric from one grid spacing
+    ok 1 - derive every visual metric from one grid spacing
+      ---
+      duration_ms: 0.954476
+      ...
+    # Subtest: exposes blueprint control-point colors and outline as shared constants
+    ok 2 - exposes blueprint control-point colors and outline as shared constants
+      ---
+      duration_ms: 0.320128
+      ...
+    # Subtest: builds blueprint-style IK points and cubic path data
+    ok 3 - builds blueprint-style IK points and cubic path data
+      ---
+      duration_ms: 1.288794
+      ...
+    1..3
+ok 1 - blueprint link helpers
+  ---
+  duration_ms: 5.559306
+  type: 'suite'
+  ...
+# Subtest: IK symmetry — shared test cases
+    # Subtest: Collinear straight 0°: all checks pass
+    ok 1 - Collinear straight 0°: all checks pass
+      ---
+      duration_ms: 25.462278
+      ...
+    # Subtest: Collinear straight 30°: all checks pass
+    ok 2 - Collinear straight 30°: all checks pass
+      ---
+      duration_ms: 1.77451
+      ...
+    # Subtest: Collinear straight 45°: all checks pass
+    ok 3 - Collinear straight 45°: all checks pass
+      ---
+      duration_ms: 4.045053
+      ...
+    # Subtest: Collinear straight 90°: all checks pass
+    ok 4 - Collinear straight 90°: all checks pass
+      ---
+      duration_ms: 4.011572
+      ...
+    # Subtest: Collinear straight 135°: all checks pass
+    ok 5 - Collinear straight 135°: all checks pass
+      ---
+      duration_ms: 0.834616
+      ...
+    # Subtest: Collinear straight 170°: all checks pass
+    ok 6 - Collinear straight 170°: all checks pass
+      ---
+      duration_ms: 2.053898
+      ...
+    # Subtest: Extended collinear 0° (8×): all checks pass
+    ok 7 - Extended collinear 0° (8×): all checks pass
+      ---
+      duration_ms: 0.593877
+      ...
+    # Subtest: Extended collinear 90° (6×): all checks pass
+    ok 8 - Extended collinear 90° (6×): all checks pass
+      ---
+      duration_ms: 2.460185
+      ...
+    # Subtest: Extended collinear 45° (6×): all checks pass
+    ok 9 - Extended collinear 45° (6×): all checks pass
+      ---
+      duration_ms: 0.761067
+      ...
+    # Subtest: Extended asymmetric: all checks pass
+    ok 10 - Extended asymmetric: all checks pass
+      ---
+      duration_ms: 0.80299
+      ...
+    # Subtest: Vertical symmetric: all checks pass
+    ok 11 - Vertical symmetric: all checks pass
+      ---
+      duration_ms: 2.607486
+      ...
+    # Subtest: Vertical wave-like: all checks pass
+    ok 12 - Vertical wave-like: all checks pass
+      ---
+      duration_ms: 0.431805
+      ...
+    # Subtest: Horizontal wave-like: all checks pass
+    ok 13 - Horizontal wave-like: all checks pass
+      ---
+      duration_ms: 2.430282
+      ...
+    # Subtest: Diagonal symmetric: all checks pass
+    ok 14 - Diagonal symmetric: all checks pass
+      ---
+      duration_ms: 0.286958
+      ...
+    # Subtest: Diagonal wave-like: all checks pass
+    ok 15 - Diagonal wave-like: all checks pass
+      ---
+      duration_ms: 0.49544
+      ...
+    # Subtest: Loop: all checks pass
+    ok 16 - Loop: all checks pass
+      ---
+      duration_ms: 0.247169
+      ...
+    # Subtest: Self-referencing: all checks pass
+    ok 17 - Self-referencing: all checks pass
+      ---
+      duration_ms: 0.206869
+      ...
+    # Subtest: Diagonal to vertical: all checks pass
+    ok 18 - Diagonal to vertical: all checks pass
+      ---
+      duration_ms: 2.392964
+      ...
+    # Subtest: Diagonal to vertical (mirrored): all checks pass
+    ok 19 - Diagonal to vertical (mirrored): all checks pass
+      ---
+      duration_ms: 3.080642
+      ...
+    # Subtest: all intermediate points lie within dynamic maximumReach of center
+    ok 20 - all intermediate points lie within dynamic maximumReach of center
+      ---
+      duration_ms: 5.067301
+      ...
+    1..20
+ok 2 - IK symmetry — shared test cases
+  ---
+  duration_ms: 62.64859
+  type: 'suite'
+  ...
+# Subtest: screenToWorld
+    # Subtest: returns SVG origin when no transform is applied
+    ok 1 - returns SVG origin when no transform is applied
+      ---
+      duration_ms: 0.894236
+      ...
+    # Subtest: converts correctly with scale=1 and no offset
+    ok 2 - converts correctly with scale=1 and no offset
+      ---
+      duration_ms: 0.123004
+      ...
+    # Subtest: accounts for translation offset
+    ok 3 - accounts for translation offset
+      ---
+      duration_ms: 0.169443
+      ...
+    # Subtest: accounts for scale
+    ok 4 - accounts for scale
+      ---
+      duration_ms: 0.100621
+      ...
+    # Subtest: accounts for both offset and scale
+    ok 5 - accounts for both offset and scale
+      ---
+      duration_ms: 0.078957
+      ...
+    # Subtest: is the inverse of the CSS transform (world→screen)
+    ok 6 - is the inverse of the CSS transform (world→screen)
+      ---
+      duration_ms: 0.088592
+      ...
+    1..6
+ok 3 - screenToWorld
+  ---
+  duration_ms: 2.45715
+  type: 'suite'
+  ...
+# Subtest: computeWheelZoom — pivot invariant
+    # Subtest: zoom-in: world point under cursor is unchanged
+    ok 1 - zoom-in: world point under cursor is unchanged
+      ---
+      duration_ms: 0.21396
+      ...
+    # Subtest: zoom-out: world point under cursor is unchanged
+    ok 2 - zoom-out: world point under cursor is unchanged
+      ---
+      duration_ms: 0.129554
+      ...
+    # Subtest: zoom at top-left corner: world point under cursor is unchanged
+    ok 3 - zoom at top-left corner: world point under cursor is unchanged
+      ---
+      duration_ms: 0.169854
+      ...
+    # Subtest: zoom at bottom-right corner: world point under cursor is unchanged
+    ok 4 - zoom at bottom-right corner: world point under cursor is unchanged
+      ---
+      duration_ms: 0.12035
+      ...
+    # Subtest: respects MIN_SCALE lower bound
+    ok 5 - respects MIN_SCALE lower bound
+      ---
+      duration_ms: 0.124426
+      ...
+    # Subtest: respects MAX_SCALE upper bound
+    ok 6 - respects MAX_SCALE upper bound
+      ---
+      duration_ms: 0.265196
+      ...
+    # Subtest: wheel delta=0 produces no change
+    ok 7 - wheel delta=0 produces no change
+      ---
+      duration_ms: 0.130215
+      ...
+    # Subtest: zoom-in at arbitrary off-center cursor position
+    ok 8 - zoom-in at arbitrary off-center cursor position
+      ---
+      duration_ms: 0.17423
+      ...
+    1..8
+ok 4 - computeWheelZoom — pivot invariant
+  ---
+  duration_ms: 3.264187
+  type: 'suite'
+  ...
+# Subtest: computePanMove
+    # Subtest: no movement produces no offset change
+    ok 1 - no movement produces no offset change
+      ---
+      duration_ms: 0.146519
+      ...
+    # Subtest: moves offset by the delta of cursor movement
+    ok 2 - moves offset by the delta of cursor movement
+      ---
+      duration_ms: 0.098988
+      ...
+    # Subtest: adds delta to initial offset (not current offset)
+    ok 3 - adds delta to initial offset (not current offset)
+      ---
+      duration_ms: 0.057837
+      ...
+    # Subtest: supports panning in negative direction
+    ok 4 - supports panning in negative direction
+      ---
+      duration_ms: 0.177736
+      ...
+    1..4
+ok 5 - computePanMove
+  ---
+  duration_ms: 0.686475
+  type: 'suite'
+  ...
+# Subtest: computePinchZoom — pivot invariant
+    # Subtest: pinch-zoom: world point at midpoint is unchanged
+    ok 1 - pinch-zoom: world point at midpoint is unchanged
+      ---
+      duration_ms: 0.141631
+      ...
+    # Subtest: pinch-zoom with moving midpoint pans the canvas
+    ok 2 - pinch-zoom with moving midpoint pans the canvas
+      ---
+      duration_ms: 0.06687
+      ...
+    # Subtest: respects MIN_SCALE during pinch-out
+    ok 3 - respects MIN_SCALE during pinch-out
+      ---
+      duration_ms: 0.045879
+      ...
+    # Subtest: respects MAX_SCALE during pinch-in
+    ok 4 - respects MAX_SCALE during pinch-in
+      ---
+      duration_ms: 0.041812
+      ...
+    1..4
+ok 6 - computePinchZoom — pivot invariant
+  ---
+  duration_ms: 0.371635
+  type: 'suite'
+  ...
+# Subtest: pointer-events fix — zoom at any grid position
+    # Subtest: zoom math is correct at any arbitrary screen position (top-left)
+    ok 1 - zoom math is correct at any arbitrary screen position (top-left)
+      ---
+      duration_ms: 0.112849
+      ...
+    # Subtest: zoom math is correct at any arbitrary screen position (bottom-right)
+    ok 2 - zoom math is correct at any arbitrary screen position (bottom-right)
+      ---
+      duration_ms: 0.09397
+      ...
+    # Subtest: zoom math is correct after prior pan (simulates pan then zoom elsewhere)
+    ok 3 - zoom math is correct after prior pan (simulates pan then zoom elsewhere)
+      ---
+      duration_ms: 0.052299
+      ...
+    1..3
+ok 7 - pointer-events fix — zoom at any grid position
+  ---
+  duration_ms: 0.452787
+  type: 'suite'
+  ...
+# Subtest: Issue \#21 — zoom works far from link center
+    # Subtest: zoom-in after panning far right (cursor beyond initial SVG bounds)
+    ok 1 - zoom-in after panning far right (cursor beyond initial SVG bounds)
+      ---
+      duration_ms: 0.098467
+      ...
+    # Subtest: zoom-out at small scale (SVG layout box smaller than viewport)
+    ok 2 - zoom-out at small scale (SVG layout box smaller than viewport)
+      ---
+      duration_ms: 0.05336
+      ...
+    # Subtest: successive zoom operations accumulate correctly at any position
+    ok 3 - successive zoom operations accumulate correctly at any position
+      ---
+      duration_ms: 0.066779
+      ...
+    1..3
+ok 8 - Issue \#21 — zoom works far from link center
+  ---
+  duration_ms: 0.3013
+  type: 'suite'
+  ...
+1..8
+# tests 51
+# suites 8
+# pass 51
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 184.118291
