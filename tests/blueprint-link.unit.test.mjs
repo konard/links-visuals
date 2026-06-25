@@ -5,6 +5,9 @@ import {
   buildBlueprintPathData,
   computeBlueprintLinkPoints,
   createBlueprintMetrics,
+  CONTROL_POINT_COLORS,
+  CONTROL_POINT_DASH_ARRAY,
+  CONTROL_POINT_STROKE_WIDTH,
 } from '../js/blueprint-link.mjs';
 
 describe('blueprint link helpers', () => {
@@ -19,6 +22,20 @@ describe('blueprint link helpers', () => {
     assert.equal(metrics.circleRadius, 17);
     assert.equal(metrics.strokeWidth, 8.5);
     assert.equal(metrics.sideTolerance, 0.1);
+    // Control-point outline matches blueprint.html exactly (fixed, not scaled).
+    assert.equal(metrics.cpStrokeWidth, 1);
+    assert.equal(metrics.cpDashArray, '4 2');
+  });
+
+  it('exposes blueprint control-point colors and outline as shared constants', () => {
+    // Per issue #28, the per-link color must never touch the control points.
+    // These stay fixed and identical to blueprint.html / control-points.mjs.
+    assert.equal(CONTROL_POINT_COLORS.start, 'green');
+    assert.equal(CONTROL_POINT_COLORS.end, 'red');
+    assert.equal(CONTROL_POINT_COLORS.center, 'black');
+    assert.equal(CONTROL_POINT_COLORS.intermediate, 'blue');
+    assert.equal(CONTROL_POINT_STROKE_WIDTH, 1);
+    assert.equal(CONTROL_POINT_DASH_ARRAY, '4 2');
   });
 
   it('builds blueprint-style IK points and cubic path data', () => {

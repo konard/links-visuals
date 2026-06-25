@@ -15,6 +15,21 @@ import { computeIntermediatePoints } from './ik-pure.mjs';
 export const START_OFFSET_FRACTION = 0.10;
 export const END_OFFSET_FRACTION = 0.16;
 
+// Control-point outline style, identical to blueprint.html / control-points.mjs:
+// a 1px dashed stroke. These are intentionally fixed (not scaled by gridSpacing)
+// so a grid link renders exactly like a blueprint link does at the same spacing.
+export const CONTROL_POINT_STROKE_WIDTH = 1;
+export const CONTROL_POINT_DASH_ARRAY = '4 2';
+
+// Fixed semantic colors for control points, identical to blueprint.html.
+// The per-link color only ever applies to the link itself (path + markers).
+export const CONTROL_POINT_COLORS = {
+  start: 'green',
+  end: 'red',
+  center: 'black',
+  intermediate: 'blue',
+};
+
 export function createBlueprintMetrics(gridSpacing) {
   return {
     gridSpacing,
@@ -25,6 +40,8 @@ export function createBlueprintMetrics(gridSpacing) {
     maximumReach: IK_SEG_COUNT * gridSpacing,
     sideTolerance: sideTolFraction * gridSpacing,
     strokeWidth: strokeFraction * gridSpacing,
+    cpStrokeWidth: CONTROL_POINT_STROKE_WIDTH,
+    cpDashArray: CONTROL_POINT_DASH_ARRAY,
   };
 }
 

@@ -85,6 +85,7 @@
         buildBlueprintPathData,
         computeBlueprintLinkPoints,
         createBlueprintMetrics,
+        CONTROL_POINT_COLORS,
       } = await import('./js/blueprint-link.mjs');
 
       // ---- LocalStorage ----
@@ -364,18 +365,6 @@
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
       }
 
-      // Blend link color with an overlay color at 0.5 opacity
-      // Result: overlay * 0.5 + linkColor * 0.5
-      function blendColor(linkRgb, overlayRgb) {
-        const r = Math.round(linkRgb[0] * 0.5 + overlayRgb[0] * 0.5);
-        const g = Math.round(linkRgb[1] * 0.5 + overlayRgb[1] * 0.5);
-        const b = Math.round(linkRgb[2] * 0.5 + overlayRgb[2] * 0.5);
-        return `rgb(${r},${g},${b})`;
-      }
-
-      const GREEN_RGB = [0, 128, 0];
-      const RED_RGB   = [255, 0, 0];
-
       // ---- Markers (per-link colored, from blueprint) ----
       function initMarkers(count) {
         defs.selectAll("marker").remove();
@@ -512,7 +501,7 @@
       function updateLink(i) {
         const params = computeGridParams();
         const link = links[i];
-        const { pathData } = getLinkRenderData(link, params);
+        const { points, pathData } = getLinkRenderData(link, params);
 
         // Update path
         linksGroup.select(`path.link-${i}`).attr("d", pathData);
@@ -524,6 +513,13 @@
           .attr("cx", link.center.x).attr("cy", link.center.y);
         linksGroup.select(`circle.cp-end-${i}`)
           .attr("cx", link.end.x).attr("cy", link.end.y);
+
+        // Update IK-controlled intermediate points (they follow start/end).
+        for (const idx of [1, 2, 3, 5, 6, 7]) {
+          const point = points[idx];
+          linksGroup.select(`circle.cp-int-${i}-${idx}`)
+            .attr("cx", point.x).attr("cy", point.y);
+        }
       }
 
       // ---- Main render ----
@@ -541,10 +537,14 @@
         // Clear previous links
         linksGroup.selectAll("*").remove();
 
+        // Point indices in the blueprint points array that are IK-controlled
+        // intermediates (p1, p2, p3 then p4, p5, p6); 0/4/8 are start/center/end.
+        const INTERMEDIATE_INDICES = [1, 2, 3, 5, 6, 7];
+
         for (let i = 0; i < linkCount; i++) {
           const link = links[i];
           const linkColor = getLinkColor(i, linkCount);
-          const { pathData } = getLinkRenderData(link, params);
+          const { points, pathData } = getLinkRenderData(link, params);
 
           // Draw link path with per-link color
           linksGroup.append("path")
@@ -556,50 +556,65 @@
             .attr("marker-end", `url(#arrow-marker-${i})`)
             .attr("d", pathData);
 
-          // Control points styled like blueprint.html:
+          // Control points styled EXACTLY like blueprint.html — the per-link
+          // color only applies to the link itself (path + markers), never to
+          // the control points. The semantic colors (green = start, red = end,
+          // black = center, blue = intermediate) stay fixed across every link,
+          // just like single mode.
           // - fill: transparent (rgba(0,0,0,0))
-          // - stroke-dasharray: "4 2"
-          // - stroke-width: 2
-          // Colors: link's color + 0.5 opacity green (start),
-          //         link's color (center),
-          //         link's color + 0.5 opacity red (end)
-          const linkRgb = getLinkRgb(i, linkCount);
-          const startColor = blendColor(linkRgb, GREEN_RGB);
-          const endColor   = blendColor(linkRgb, RED_RGB);
+          // - stroke-dasharray: "4 2"  (blueprint.html value)
+          // - stroke-width: 1          (blueprint.html value)
+          // - radius: proportional to grid spacing, so each link is a faithful
+          //   miniature of the single-link blueprint at its own scale.
 
-          // Center control point: link color stroke (not draggable, fixed position)
+          // Center control point: black stroke (not draggable, fixed position)
           linksGroup.append("circle")
             .attr("class", `cp-center-${i}`)
             .attr("cx", link.center.x).attr("cy", link.center.y)
             .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", linkColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.center)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "none");
 
-          // Start control point: link color blended with green
+          // Intermediate control points: blue (IK-controlled, not draggable),
+          // exactly like blueprint.html in auto layout mode.
+          for (const idx of INTERMEDIATE_INDICES) {
+            const point = points[idx];
+            linksGroup.append("circle")
+              .attr("class", `cp-int-${i}-${idx}`)
+              .attr("cx", point.x).attr("cy", point.y)
+              .attr("r", params.circleRadius)
+              .attr("fill", "rgba(0,0,0,0)")
+              .attr("stroke", CONTROL_POINT_COLORS.intermediate)
+              .attr("stroke-dasharray", params.cpDashArray)
+              .attr("stroke-width", params.cpStrokeWidth)
+              .style("pointer-events", "none");
+          }
+
+          // Start control point: green (matches blueprint.html)
           linksGroup.append("circle")
             .attr("class", `cp-start-${i}`)
             .attr("cx", link.start.x).attr("cy", link.start.y)
             .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", startColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.start)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "auto")
             .style("cursor", "grab")
             .datum({ linkIndex: i, pointType: "start" });
 
-          // End control point: link color blended with red
+          // End control point: red (matches blueprint.html)
           linksGroup.append("circle")
             .attr("class", `cp-end-${i}`)
             .attr("cx", link.end.x).attr("cy", link.end.y)
             .attr("r", params.circleRadius)
             .attr("fill", "rgba(0,0,0,0)")
-            .attr("stroke", endColor)
-            .attr("stroke-dasharray", "4 2")
-            .attr("stroke-width", 2)
+            .attr("stroke", CONTROL_POINT_COLORS.end)
+            .attr("stroke-dasharray", params.cpDashArray)
+            .attr("stroke-width", params.cpStrokeWidth)
             .style("pointer-events", "auto")
             .style("cursor", "grab")
             .datum({ linkIndex: i, pointType: "end" });

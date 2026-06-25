@@ -95,6 +95,57 @@ describe(
       assert.equal(metrics.crossMarkerWidth, '100');
     });
 
+    it('keeps control point colors fixed (green/red/black) while only the link is colored', async () => {
+      const data = await page.evaluate(() => {
+        const read = sel => {
+          const e = document.querySelector(sel);
+          return e && {
+            stroke: e.getAttribute('stroke'),
+            strokeWidth: e.getAttribute('stroke-width'),
+            dash: e.getAttribute('stroke-dasharray'),
+          };
+        };
+        const links = [...document.querySelectorAll('path[marker-start]')];
+        return {
+          // Two different links should have two different link (path) colors…
+          linkColors: links.map(p => p.getAttribute('stroke')),
+          // …but their control points must share the same fixed semantic colors.
+          start0: read('circle.cp-start-0'),
+          end0: read('circle.cp-end-0'),
+          center0: read('circle.cp-center-0'),
+          start1: read('circle.cp-start-1'),
+          end1: read('circle.cp-end-1'),
+          center1: read('circle.cp-center-1'),
+          int0: read('circle.cp-int-0-1'),
+          int1: read('circle.cp-int-1-7'),
+        };
+      });
+
+      // The per-link color is applied to the link path, and differs per link.
+      assert.notEqual(data.linkColors[0], data.linkColors[1],
+        'Different links should have different link (path) colors');
+
+      // Control point colors are fixed and identical across every link.
+      for (const cp of [data.start0, data.start1]) {
+        assert.equal(cp.stroke, 'green', 'Start control point must stay green on every link');
+      }
+      for (const cp of [data.end0, data.end1]) {
+        assert.equal(cp.stroke, 'red', 'End control point must stay red on every link');
+      }
+      for (const cp of [data.center0, data.center1]) {
+        assert.equal(cp.stroke, 'black', 'Center control point must stay black on every link');
+      }
+      for (const cp of [data.int0, data.int1]) {
+        assert.equal(cp.stroke, 'blue', 'Intermediate control points must stay blue on every link');
+      }
+
+      // Control point outline matches blueprint.html exactly: 1px dashed "4 2".
+      for (const cp of [data.start0, data.end0, data.center0, data.start1, data.end1, data.center1, data.int0, data.int1]) {
+        assert.equal(cp.strokeWidth, '1', 'Control point stroke-width must match blueprint (1px)');
+        assert.equal(cp.dash, '4 2', 'Control point dash must match blueprint ("4 2")');
+      }
+    });
+
     it('reset restores the default self-referencing layout', async () => {
       const before = await page.evaluate(() => {
         const end = document.querySelector('circle.cp-end-0');
@@ -121,8 +172,9 @@ describe(
 
       await page.click('#resetBtn');
       await page.waitForFunction(() => {
+        // 4 links x (start + center + end + 6 intermediate) = 36 control circles.
         const controls = [...document.querySelectorAll('circle[class^="cp-"]')];
-        return controls.length === 12;
+        return controls.length === 36;
       });
 
       const after = await page.evaluate(() => {
