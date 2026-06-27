@@ -1,0 +1,361 @@
+
+> links-visuals@1.0.0 test:e2e
+> RUN_E2E=true node --test tests/animated-blueprint.e2e.test.mjs tests/blueprint.e2e.test.mjs tests/grid.e2e.test.mjs tests/draw.e2e.test.mjs
+
+TAP version 13
+# Subtest: animated-blueprint.html — E2E tests
+    # Subtest: Page load
+        # Subtest: navigates to animated-blueprint.html without errors
+        ok 1 - navigates to animated-blueprint.html without errors
+          ---
+          duration_ms: 34077.844087
+          ...
+        # Subtest: renders an SVG element
+        ok 2 - renders an SVG element
+          ---
+          duration_ms: 12.076106
+          ...
+        # Subtest: renders the background grid
+        ok 3 - renders the background grid
+          ---
+          duration_ms: 3.173
+          ...
+        # Subtest: renders exactly 9 control circles
+        ok 4 - renders exactly 9 control circles
+          ---
+          duration_ms: 4.459761
+          ...
+        # Subtest: renders the main path with markers
+        ok 5 - renders the main path with markers
+          ---
+          duration_ms: 5.033448
+          ...
+        1..5
+    ok 1 - Page load
+      ---
+      duration_ms: 34103.696118
+      type: 'suite'
+      ...
+    # Subtest: Markers
+        # Subtest: cross-marker definition exists in <defs>
+        ok 1 - cross-marker definition exists in <defs>
+          ---
+          duration_ms: 4.336748
+          ...
+        # Subtest: arrow-marker definition exists in <defs>
+        ok 2 - arrow-marker definition exists in <defs>
+          ---
+          duration_ms: 3.149344
+          ...
+        # Subtest: markers use default markerUnits (strokeWidth)
+        ok 3 - markers use default markerUnits (strokeWidth)
+          ---
+          duration_ms: 6.002234
+          ...
+        # Subtest: markers have viewBox="0 0 100 100" and markerWidth=100
+        ok 4 - markers have viewBox="0 0 100 100" and markerWidth=100
+          ---
+          duration_ms: 5.539363
+          ...
+        1..4
+    ok 2 - Markers
+      ---
+      duration_ms: 19.760002
+      type: 'suite'
+      ...
+    # Subtest: UI panels
+        # Subtest: shows the coordinate HUD
+        ok 1 - shows the coordinate HUD
+          ---
+          duration_ms: 5.717058
+          ...
+        # Subtest: shows the config panel
+        ok 2 - shows the config panel
+          ---
+          duration_ms: 3.226349
+          ...
+        # Subtest: toggle button hides panels
+        ok 3 - toggle button hides panels
+          ---
+          duration_ms: 157.072592
+          ...
+        # Subtest: SVG render mode is active by default
+        ok 4 - SVG render mode is active by default
+          ---
+          duration_ms: 3.091397
+          ...
+        # Subtest: Canvas render mode button switches to canvas
+        ok 5 - Canvas render mode button switches to canvas
+          ---
+          duration_ms: 136.741868
+          ...
+        # Subtest: config panel remains visible in canvas mode
+        ok 6 - config panel remains visible in canvas mode
+          ---
+          duration_ms: 99.220269
+          ...
+        1..6
+    ok 3 - UI panels
+      ---
+      duration_ms: 405.904861
+      type: 'suite'
+      ...
+    # Subtest: Infinite grid
+        # Subtest: grid uses SVG pattern tiles
+        ok 1 - grid uses SVG pattern tiles
+          ---
+          duration_ms: 3.044787
+          ...
+        # Subtest: SVG has overflow=visible so grid extends beyond SVG viewport during pan/zoom
+        ok 2 - SVG has overflow=visible so grid extends beyond SVG viewport during pan/zoom
+          ---
+          duration_ms: 3.084797
+          ...
+        1..2
+    ok 4 - Infinite grid
+      ---
+      duration_ms: 6.575171
+      type: 'suite'
+      ...
+    # Subtest: Responsiveness
+        # Subtest: SVG fills the full viewport
+        ok 1 - SVG fills the full viewport
+          ---
+          duration_ms: 3.790661
+          ...
+        1..1
+    ok 5 - Responsiveness
+      ---
+      duration_ms: 4.069429
+      type: 'suite'
+      ...
+    # Subtest: Interaction
+        # Subtest: dragging start point triggers animation
+        ok 1 - dragging start point triggers animation
+          ---
+          duration_ms: 237.106145
+          ...
+        1..1
+    ok 6 - Interaction
+      ---
+      duration_ms: 237.411752
+      type: 'suite'
+      ...
+    # Subtest: Zoom at any grid position
+        # Subtest: SVG element has pointer-events:all so empty grid areas receive wheel events
+        ok 1 - SVG element has pointer-events:all so empty grid areas receive wheel events
+          ---
+          duration_ms: 3.555069
+          ...
+        # Subtest: zoom via wheel works at the top-left corner of the viewport (empty grid area)
+        ok 2 - zoom via wheel works at the top-left corner of the viewport (empty grid area)
+          ---
+          duration_ms: 191.250729
+          ...
+        # Subtest: zoom via wheel works at the bottom-right corner of the viewport (empty grid area)
+        ok 3 - zoom via wheel works at the bottom-right corner of the viewport (empty grid area)
+          ---
+          duration_ms: 182.292248
+          ...
+        # Subtest: zoom via wheel works at the top-right corner of the viewport (empty grid area)
+        ok 4 - zoom via wheel works at the top-right corner of the viewport (empty grid area)
+          ---
+          duration_ms: 199.704684
+          ...
+        # Subtest: pan via drag works at empty grid areas
+        ok 5 - pan via drag works at empty grid areas
+          ---
+          duration_ms: 254.929225
+          ...
+        1..5
+    ok 7 - Zoom at any grid position
+      ---
+      duration_ms: 832.556178
+      type: 'suite'
+      ...
+    1..7
+ok 1 - animated-blueprint.html — E2E tests
+  ---
+  duration_ms: 36342.793512
+  type: 'suite'
+  ...
+# Subtest: blueprint.html — E2E tests
+    # Subtest: Page load
+        # Subtest: navigates to blueprint.html without errors
+        ok 1 - navigates to blueprint.html without errors
+          ---
+          duration_ms: 3072.873977
+          ...
+        # Subtest: renders an SVG element
+        ok 2 - renders an SVG element
+          ---
+          duration_ms: 10.01021
+          ...
+        # Subtest: renders the background grid
+        ok 3 - renders the background grid
+          ---
+          duration_ms: 2.714494
+          ...
+        # Subtest: renders exactly 9 control circles
+        ok 4 - renders exactly 9 control circles
+          ---
+          duration_ms: 4.095276
+          ...
+        # Subtest: renders the main path with markers
+        ok 5 - renders the main path with markers
+          ---
+          duration_ms: 4.768092
+          ...
+        1..5
+    ok 1 - Page load
+      ---
+      duration_ms: 3095.768782
+      type: 'suite'
+      ...
+    # Subtest: Infinite grid
+        # Subtest: grid uses SVG pattern tiles
+        ok 1 - grid uses SVG pattern tiles
+          ---
+          duration_ms: 3.996238
+          ...
+        # Subtest: SVG has overflow=visible so grid extends beyond SVG viewport during pan/zoom
+        ok 2 - SVG has overflow=visible so grid extends beyond SVG viewport during pan/zoom
+          ---
+          duration_ms: 2.555226
+          ...
+        1..2
+    ok 2 - Infinite grid
+      ---
+      duration_ms: 6.850651
+      type: 'suite'
+      ...
+    # Subtest: Zoom at any grid position
+        # Subtest: SVG element has pointer-events:all so empty grid areas receive wheel events
+        ok 1 - SVG element has pointer-events:all so empty grid areas receive wheel events
+          ---
+          duration_ms: 4.216478
+          ...
+        # Subtest: zoom via wheel works at the top-left corner of the viewport (empty grid area)
+        ok 2 - zoom via wheel works at the top-left corner of the viewport (empty grid area)
+          ---
+          duration_ms: 187.749748
+          ...
+        # Subtest: zoom via wheel works at the bottom-right corner of the viewport (empty grid area)
+        ok 3 - zoom via wheel works at the bottom-right corner of the viewport (empty grid area)
+          ---
+          duration_ms: 182.486067
+          ...
+        # Subtest: zoom via wheel works at the top-right corner of the viewport (empty grid area)
+        ok 4 - zoom via wheel works at the top-right corner of the viewport (empty grid area)
+          ---
+          duration_ms: 182.17925
+          ...
+        # Subtest: pan via drag works at empty grid areas
+        ok 5 - pan via drag works at empty grid areas
+          ---
+          duration_ms: 211.928059
+          ...
+        1..5
+    ok 3 - Zoom at any grid position
+      ---
+      duration_ms: 769.608448
+      type: 'suite'
+      ...
+    # Subtest: UI panels
+        # Subtest: shows the coordinate HUD
+        ok 1 - shows the coordinate HUD
+          ---
+          duration_ms: 3.911292
+          ...
+        # Subtest: shows the config panel with offset sliders
+        ok 2 - shows the config panel with offset sliders
+          ---
+          duration_ms: 3.232778
+          ...
+        # Subtest: toggle button hides panels
+        ok 3 - toggle button hides panels
+          ---
+          duration_ms: 137.391467
+          ...
+        1..3
+    ok 4 - UI panels
+      ---
+      duration_ms: 145.029024
+      type: 'suite'
+      ...
+    # Subtest: Responsiveness
+        # Subtest: SVG fills the full viewport
+        ok 1 - SVG fills the full viewport
+          ---
+          duration_ms: 8.997318
+          ...
+        1..1
+    ok 5 - Responsiveness
+      ---
+      duration_ms: 9.372448
+      type: 'suite'
+      ...
+    1..5
+ok 2 - blueprint.html — E2E tests
+  ---
+  duration_ms: 4737.341318
+  type: 'suite'
+  ...
+# Subtest: draw.html - E2E tests
+    # Subtest: loads the mobile-first drawing surface with blueprint markers and grid patterns
+    ok 1 - loads the mobile-first drawing surface with blueprint markers and grid patterns
+      ---
+      duration_ms: 816.387693
+      ...
+    # Subtest: turns a freehand stroke into a link with start, center, end, and intermediate controls
+    ok 2 - turns a freehand stroke into a link with start, center, end, and intermediate controls
+      ---
+      duration_ms: 948.487849
+      ...
+    # Subtest: draw mode creates a pinned child link when a stroke starts on an existing center
+    ok 3 - draw mode creates a pinned child link when a stroke starts on an existing center
+      ---
+      duration_ms: 1020.671917
+      ...
+    # Subtest: select mode moves a pinned center and keeps child endpoints attached
+    ok 4 - select mode moves a pinned center and keeps child endpoints attached
+      ---
+      duration_ms: 1259.914762
+      ...
+    1..4
+ok 3 - draw.html - E2E tests
+  ---
+  duration_ms: 4673.806586
+  type: 'suite'
+  ...
+# Subtest: grid.html - E2E tests
+    # Subtest: renders blueprint-style link proportions for each grid cell
+    ok 1 - renders blueprint-style link proportions for each grid cell
+      ---
+      duration_ms: 875.036856
+      ...
+    # Subtest: keeps control point colors fixed (green/red/black) while only the link is colored
+    ok 2 - keeps control point colors fixed (green/red/black) while only the link is colored
+      ---
+      duration_ms: 599.519195
+      ...
+    # Subtest: reset restores the default self-referencing layout
+    ok 3 - reset restores the default self-referencing layout
+      ---
+      duration_ms: 670.373659
+      ...
+    1..3
+ok 4 - grid.html - E2E tests
+  ---
+  duration_ms: 2733.224333
+  type: 'suite'
+  ...
+1..4
+# tests 47
+# suites 16
+# pass 47
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 36429.610184
