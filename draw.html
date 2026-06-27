@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Draw links</title>
+
+  <style>
+    html, body { margin:0; padding:0; background:#E0F7FA; height:100%; overflow:hidden; }
+    body { user-select:none; -webkit-user-select:none; }
+    svg  { display:block; touch-action:none; }
+
+    /* ---- coordinates HUD ---- */
+    #coordinates{
+      position:fixed; bottom:1vmin; left:1vmin; z-index:10;
+      background:rgba(0,0,128,.5); color:#fff;
+      padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin; white-space:pre;
+      transition: opacity 0.2s;
+    }
+
+    /* ---- config panel ---- */
+    #config-panel{
+      position:fixed; bottom:1vmin; right:1vmin; z-index:10;
+      background:rgba(0,0,128,.5); color:#fff;
+      padding:0.7vmin; font:clamp(9px,1.2vmin,14px)/1.3 "Consolas","Courier New",monospace;
+      border-radius:0.4vmin;
+      transition: opacity 0.2s;
+    }
+    #config-panel label{ display:block; margin-bottom:0.3vmin; }
+    #config-panel .val{ display:inline-block; width:3vw; min-width:28px; text-align:right; }
+    #config-panel .mode-row {
+      display:flex; align-items:center; gap:0.5vmin; margin-bottom:0.3vmin;
+    }
+    #config-panel .mode-row button {
+      background:rgba(255,255,255,0.15); color:#fff;
+      border:1px solid rgba(255,255,255,0.4); border-radius:0.3vmin;
+      padding:0.2vmin 0.6vmin; font-size:inherit; cursor:pointer;
+    }
+    #config-panel .mode-row button.active {
+      background:rgba(255,255,255,0.4); font-weight:bold;
+    }
+    #config-panel .mode-row button:hover { background:rgba(255,255,255,0.3); }
+
+    /* ---- toggle button ---- */
+    #toggle-panels{
+      position:fixed; top:1vmin; right:1vmin;
+      background:rgba(0,0,128,.7); color:#fff;
+      border:none; border-radius:0.4vmin;
+      padding:0.6vmin 1vmin; font-size:clamp(10px,1.4vmin,16px);
+      cursor:pointer; z-index:100;
+      line-height:1;
+    }
+    #toggle-panels:hover{ background:rgba(0,0,128,.9); }
+
+    .panels-hidden #coordinates,
+    .panels-hidden #config-panel { opacity:0; pointer-events:none; }
+
+    body.mode-draw svg { cursor:crosshair; }
+    body.mode-select svg { cursor:grab; }
+    body.mode-select svg.dragging { cursor:grabbing; }
+
+    path.preview {
+      pointer-events:none;
+      opacity:0.45;
+      stroke-dasharray:4 2;
+    }
+
+    circle.control { cursor:grab; }
+    body.mode-draw circle.control { pointer-events:none; }
+    body.mode-select circle.control { pointer-events:auto; }
+
+    @media (max-width:599px){
+      #coordinates{
+        bottom:auto; top:0; left:0; right:0;
+        border-radius:0; padding:1.5vw;
+        font-size:clamp(10px,3vw,14px);
+      }
+      #config-panel{
+        bottom:0; left:0; right:0;
+        border-radius:0; padding:1.5vw;
+        font-size:clamp(12px,3.5vw,16px);
+      }
+      #config-panel .val{ width:8vw; min-width:36px; }
+      #toggle-panels{
+        top:1.5vw; right:1.5vw;
+        font-size:clamp(14px,4vw,20px);
+        padding:1vw 1.5vw;
+      }
+    }
+  </style>
+</head>
+<body class="mode-draw">
+  <div id="coordinates"></div>
+
+  <div id="config-panel">
+    <div class="mode-row">
+      Mode:
+      <button id="selectModeBtn" title="Select and move links">Select</button>
+      <button id="drawModeBtn" class="active" title="Draw links">Draw</button>
+    </div>
+    <label>Links: <span class="val" id="linkCountVal">0</span></label>
+    <div class="mode-row">
+      <button id="resetBtn" title="Reset drawn links">Reset</button>
+    </div>
+  </div>
+
+  <button id="toggle-panels" title="Show/hide panels">&#9776;</button>
+
+  <script type="module">
+    const { use } = await import("https://esm.sh/use-m");
+    (async () => {
+      const d3 = await use('d3');
+
+      const {
+        paddingFraction,
+        MIN_SCALE,
+        MAX_SCALE,
+      } = await import('./js/constants.mjs');
+      const {
+        appendBlueprintEndpointMarkers,
+        buildBlueprintPathData,
+        createBlueprintMetrics,
+        CONTROL_POINT_COLORS,
+      } = await import('./js/blueprint-link.mjs');
+      const {
+        applyCenterAnchors,
+        createCenterLookup,
+        createDrawnLink,
+        findNearestCenter,
+      } = await import('./js/draw-link.mjs');
+
+      const STORAGE_KEY = 'draw-link-settings';
+      const GRID_EXTENT = 1e6;
+      const MARKER_CROSS_ID = 'draw-cross-marker';
+      const MARKER_ARROW_ID = 'draw-arrow-marker';
+      const MARKER_COLOR = 'black';
+
+      let width = innerWidth;
+      let height = innerHeight;
+      let metrics = createMetrics();
+      let mode = 'draw';
+      let links = [];
+      let nextLinkNumber = 0;
+
+      let canvasScale = 1;
+      let canvasOffsetX = 0;
+      let canvasOffsetY = 0;
+
+      let activeDrawing = null;
+      let activeDrag = null;
+      let activePan = null;
+
+      const svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const svg = d3.select("body").append(() => svgElement);
+      svg.attr("overflow", "visible").style("pointer-events", "all");
+      const defs = svg.append("defs");
+      const gridGroup = svg.insert("g", ":first-child").attr("class", "grid");
+      const linksGroup = svg.append("g").attr("class", "links");
+      const previewGroup = svg.append("g").attr("class", "preview-layer");
+
+      const coordinates = document.getElementById("coordinates");
+      const linkCountVal = document.getElementById("linkCountVal");
+      const selectModeBtn = document.getElementById("selectModeBtn");
+      const drawModeBtn = document.getElementById("drawModeBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const toggleButton = document.getElementById("toggle-panels");
+
+      function createMetrics() {
+        const centerX = width / 2;
+        const gridSpacing = centerX * (1 - paddingFraction) / 4;
+        return {
+          centerX,
+          centerY: height / 2,
+          ...createBlueprintMetrics(gridSpacing),
+        };
+      }
+
+      function centerSnapRadius() {
+        return Math.max(24, metrics.circleRadius * 1.35);
+      }
+
+      function minDrawPointDistance() {
+        return Math.max(3, metrics.gridSpacing * 0.035);
+      }
+
+      function saveSettings() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            version: 1,
+            links,
+            nextLinkNumber,
+            mode,
+            canvasScale,
+            canvasOffsetX,
+            canvasOffsetY,
+          }));
+        } catch {}
+      }
+
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return;
+          const saved = JSON.parse(raw);
+          if (saved?.version !== 1 || !Array.isArray(saved.links)) return;
+          links = saved.links.filter(link => Array.isArray(link.points) && link.points.length >= 2);
+          nextLinkNumber = Number.isInteger(saved.nextLinkNumber) ? saved.nextLinkNumber : links.length;
+          if (saved.mode === 'draw' || saved.mode === 'select') mode = saved.mode;
+          if (Number.isFinite(saved.canvasScale)) canvasScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, saved.canvasScale));
+          if (Number.isFinite(saved.canvasOffsetX)) canvasOffsetX = saved.canvasOffsetX;
+          if (Number.isFinite(saved.canvasOffsetY)) canvasOffsetY = saved.canvasOffsetY;
+        } catch {}
+      }
+
+      function applyTransform() {
+        svg.style("transform", `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${canvasScale})`);
+        svg.style("transform-origin", "0 0");
+      }
+
+      function screenToWorld(clientX, clientY) {
+        return {
+          x: (clientX - canvasOffsetX) / canvasScale,
+          y: (clientY - canvasOffsetY) / canvasScale,
+        };
+      }
+
+      function drawBackgroundGrid() {
+        gridGroup.selectAll("*").remove();
+        defs.select("#draw-grid-pattern-minor").remove();
+        defs.select("#draw-grid-pattern-major").remove();
+
+        const minorPattern = defs.append("pattern")
+          .attr("id", "draw-grid-pattern-minor")
+          .attr("x", ((metrics.centerX % metrics.halfSpacing) + metrics.halfSpacing) % metrics.halfSpacing)
+          .attr("y", ((metrics.centerY % metrics.halfSpacing) + metrics.halfSpacing) % metrics.halfSpacing)
+          .attr("width", metrics.halfSpacing)
+          .attr("height", metrics.halfSpacing)
+          .attr("patternUnits", "userSpaceOnUse");
+        minorPattern.append("line")
+          .attr("x1", metrics.halfSpacing).attr("y1", 0)
+          .attr("x2", metrics.halfSpacing).attr("y2", metrics.halfSpacing)
+          .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
+        minorPattern.append("line")
+          .attr("x1", 0).attr("y1", metrics.halfSpacing)
+          .attr("x2", metrics.halfSpacing).attr("y2", metrics.halfSpacing)
+          .attr("stroke", "white").attr("stroke-width", 0.5).attr("opacity", 0.5);
+
+        const majorPattern = defs.append("pattern")
+          .attr("id", "draw-grid-pattern-major")
+          .attr("x", ((metrics.centerX % metrics.gridSpacing) + metrics.gridSpacing) % metrics.gridSpacing)
+          .attr("y", ((metrics.centerY % metrics.gridSpacing) + metrics.gridSpacing) % metrics.gridSpacing)
+          .attr("width", metrics.gridSpacing)
+          .attr("height", metrics.gridSpacing)
+          .attr("patternUnits", "userSpaceOnUse");
+        majorPattern.append("line")
+          .attr("x1", metrics.gridSpacing).attr("y1", 0)
+          .attr("x2", metrics.gridSpacing).attr("y2", metrics.gridSpacing)
+          .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);
+        majorPattern.append("line")
+          .attr("x1", 0).attr("y1", metrics.gridSpacing)
+          .attr("x2", metrics.gridSpacing).attr("y2", metrics.gridSpacing)
+          .attr("stroke", "white").attr("stroke-width", 1).attr("opacity", 0.8);
+
+        gridGroup.append("rect")
+          .attr("x", -GRID_EXTENT).attr("y", -GRID_EXTENT)
+          .attr("width", 2 * GRID_EXTENT).attr("height", 2 * GRID_EXTENT)
+          .attr("fill", "url(#draw-grid-pattern-minor)");
+        gridGroup.append("rect")
+          .attr("x", -GRID_EXTENT).attr("y", -GRID_EXTENT)
+          .attr("width", 2 * GRID_EXTENT).attr("height", 2 * GRID_EXTENT)
+          .attr("fill", "url(#draw-grid-pattern-major)");
+      }
+
+      function initMarkers() {
+        defs.select(`#${MARKER_CROSS_ID}`).remove();
+        defs.select(`#${MARKER_ARROW_ID}`).remove();
+        appendBlueprintEndpointMarkers(defs, {
+          crossId: MARKER_CROSS_ID,
+          arrowId: MARKER_ARROW_ID,
+          color: MARKER_COLOR,
+        });
+      }
+
+      function format(number) {
+        const string = Math.round(number).toString();
+        return string.startsWith('-') ? '-' + string.slice(1).padStart(3,'0') : string.padStart(4,'0');
+      }
+
+      function updateHUD() {
+        linkCountVal.textContent = String(links.length);
+        if (links.length === 0) {
+          coordinates.textContent = `mode  : ${mode}\nlinks : 0`;
+          return;
+        }
+
+        const centerLookup = createCenterLookup(links);
+        coordinates.textContent = links.map(link => {
+          const rendered = applyCenterAnchors(link, centerLookup);
+          const start = rendered.points[0];
+          const center = rendered.points[rendered.centerIndex];
+          const end = rendered.points.at(-1);
+          return `${link.id.padEnd(7)} start(${format(start.x)}, ${format(start.y)}) center(${format(center.x)}, ${format(center.y)}) end(${format(end.x)}, ${format(end.y)})`;
+        }).join("\n");
+      }
+
+      function renderControlPoint(group, link, point, index) {
+        const anchored =
+          (point.role === 'start' && link.startAnchorId) ||
+          (point.role === 'end' && link.endAnchorId);
+        const circle = group.append("circle")
+          .attr("class", `control ${point.role}`)
+          .attr("data-link-id", link.id)
+          .attr("data-point-index", index)
+          .attr("data-anchored", anchored ? "true" : "false")
+          .attr("cx", point.x)
+          .attr("cy", point.y)
+          .attr("r", metrics.circleRadius)
+          .attr("fill", "rgba(0,0,0,0)")
+          .attr("stroke-dasharray", metrics.cpDashArray)
+          .attr("stroke-width", metrics.cpStrokeWidth);
+
+        if (anchored) circle.style("pointer-events", "none");
+
+        if (point.role === 'start') circle.attr("stroke", CONTROL_POINT_COLORS.start);
+        else if (point.role === 'end') circle.attr("stroke", CONTROL_POINT_COLORS.end);
+        else if (point.role === 'center') circle.attr("stroke", CONTROL_POINT_COLORS.center);
+        else circle.attr("stroke", CONTROL_POINT_COLORS.intermediate);
+      }
+
+      function renderLinks() {
+        linksGroup.selectAll("*").remove();
+        const centerLookup = createCenterLookup(links);
+
+        for (const link of links) {
+          const rendered = applyCenterAnchors(link, centerLookup);
+          const linkGroup = linksGroup.append("g")
+            .attr("class", "draw-link")
+            .attr("data-link-id", link.id);
+
+          linkGroup.append("path")
+            .attr("class", "link-path")
+            .attr("data-link-id", link.id)
+            .attr("fill", "none")
+            .attr("stroke", MARKER_COLOR)
+            .attr("stroke-width", metrics.strokeWidth)
+            .attr("marker-start", `url(#${MARKER_CROSS_ID})`)
+            .attr("marker-end", `url(#${MARKER_ARROW_ID})`)
+            .style("pointer-events", "none")
+            .attr("d", buildBlueprintPathData(rendered.points, metrics.gridSpacing));
+
+          rendered.points.forEach((point, index) => {
+            if (point.role === 'center') renderControlPoint(linkGroup, link, point, index);
+          });
+          rendered.points.forEach((point, index) => {
+            if (point.role === 'intermediate') renderControlPoint(linkGroup, link, point, index);
+          });
+          rendered.points.forEach((point, index) => {
+            if (point.role === 'start' || point.role === 'end') {
+              renderControlPoint(linkGroup, link, point, index);
+            }
+          });
+        }
+
+        updateHUD();
+      }
+
+      function renderPreview() {
+        previewGroup.selectAll("*").remove();
+        if (!activeDrawing || activeDrawing.points.length < 2) return;
+
+        previewGroup.append("path")
+          .attr("class", "preview")
+          .attr("fill", "none")
+          .attr("stroke", MARKER_COLOR)
+          .attr("stroke-width", metrics.strokeWidth)
+          .style("pointer-events", "none")
+          .attr("d", buildBlueprintPathData(activeDrawing.points, metrics.gridSpacing, 0, 0));
+      }
+
+      function renderScene() {
+        width = innerWidth;
+        height = innerHeight;
+        metrics = createMetrics();
+        svg.attr("width", width).attr("height", height);
+        drawBackgroundGrid();
+        initMarkers();
+        renderLinks();
+        renderPreview();
+        applyTransform();
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        document.body.classList.toggle("mode-draw", mode === 'draw');
+        document.body.classList.toggle("mode-select", mode === 'select');
+        drawModeBtn.classList.toggle("active", mode === 'draw');
+        selectModeBtn.classList.toggle("active", mode === 'select');
+        renderLinks();
+        saveSettings();
+      }
+
+      function getEventPoint(event) {
+        return screenToWorld(event.clientX, event.clientY);
+      }
+
+      function getControlDatum(target) {
+        const circle = target.closest?.("circle.control");
+        if (!circle) return null;
+        return {
+          linkId: circle.dataset.linkId,
+          pointIndex: parseInt(circle.dataset.pointIndex, 10),
+        };
+      }
+
+      function getControlPriority(point) {
+        if (point.role === 'center') return 0;
+        if (point.role === 'start' || point.role === 'end') return 1;
+        return 2;
+      }
+
+      function isSelectablePoint(link, point, pointIndex) {
+        if (point.role === 'start' && link.startAnchorId) return false;
+        if (point.role === 'end' && link.endAnchorId) return false;
+        return Number.isInteger(pointIndex);
+      }
+
+      function findSelectableControlAt(worldPoint) {
+        const centerLookup = createCenterLookup(links);
+        const candidates = [];
+
+        for (const link of links) {
+          const rendered = applyCenterAnchors(link, centerLookup);
+          rendered.points.forEach((point, pointIndex) => {
+            if (!isSelectablePoint(link, point, pointIndex)) return;
+            const distance = Math.hypot(worldPoint.x - point.x, worldPoint.y - point.y);
+            if (distance <= metrics.circleRadius) {
+              candidates.push({
+                linkId: link.id,
+                pointIndex,
+                priority: getControlPriority(point),
+                distance,
+              });
+            }
+          });
+        }
+
+        candidates.sort((a, b) => a.priority - b.priority || a.distance - b.distance);
+        return candidates[0] || null;
+      }
+
+      function getLink(linkId) {
+        return links.find(link => link.id === linkId) || null;
+      }
+
+      function detachEndpointAnchor(link, pointIndex) {
+        if (pointIndex === 0) link.startAnchorId = null;
+        if (pointIndex === link.points.length - 1) link.endAnchorId = null;
+      }
+
+      function finishEndpointDrag(link, pointIndex) {
+        if (pointIndex !== 0 && pointIndex !== link.points.length - 1) return;
+
+        const point = link.points[pointIndex];
+        const candidates = links.filter(candidate => candidate.id !== link.id);
+        const nearest = findNearestCenter(point, candidates, centerSnapRadius());
+        if (!nearest) return;
+
+        link.points[pointIndex] = {
+          ...link.points[pointIndex],
+          x: nearest.center.x,
+          y: nearest.center.y,
+        };
+        if (pointIndex === 0) link.startAnchorId = nearest.id;
+        else link.endAnchorId = nearest.id;
+      }
+
+      function startDrawing(event) {
+        activeDrawing = {
+          pointerId: event.pointerId,
+          points: [getEventPoint(event)],
+        };
+        svgElement.setPointerCapture(event.pointerId);
+        renderPreview();
+      }
+
+      function startDrag(event, datum) {
+        const link = getLink(datum.linkId);
+        if (!link || !Number.isInteger(datum.pointIndex)) return;
+        detachEndpointAnchor(link, datum.pointIndex);
+        activeDrag = {
+          pointerId: event.pointerId,
+          linkId: datum.linkId,
+          pointIndex: datum.pointIndex,
+        };
+        svgElement.classList.add("dragging");
+        svgElement.setPointerCapture(event.pointerId);
+      }
+
+      function startPan(event) {
+        activePan = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          offsetX: canvasOffsetX,
+          offsetY: canvasOffsetY,
+        };
+        svgElement.classList.add("dragging");
+        svgElement.setPointerCapture(event.pointerId);
+      }
+
+      function handlePointerDown(event) {
+        if (event.target.closest?.('#config-panel, #coordinates, #toggle-panels')) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+
+        const datum = mode === 'select'
+          ? findSelectableControlAt(getEventPoint(event)) || getControlDatum(event.target)
+          : null;
+        if (mode === 'select' && datum) {
+          startDrag(event, datum);
+          return;
+        }
+
+        if (mode === 'draw') startDrawing(event);
+        else startPan(event);
+      }
+
+      function handlePointerMove(event) {
+        if (activeDrawing?.pointerId === event.pointerId) {
+          event.preventDefault();
+          const point = getEventPoint(event);
+          if (activeDrawing.points.length === 0 ||
+              Math.hypot(point.x - activeDrawing.points.at(-1).x, point.y - activeDrawing.points.at(-1).y) >= 1) {
+            activeDrawing.points.push(point);
+            renderPreview();
+          }
+          return;
+        }
+
+        if (activeDrag?.pointerId === event.pointerId) {
+          event.preventDefault();
+          const link = getLink(activeDrag.linkId);
+          if (!link) return;
+          link.points[activeDrag.pointIndex] = {
+            ...link.points[activeDrag.pointIndex],
+            ...getEventPoint(event),
+          };
+          renderLinks();
+          return;
+        }
+
+        if (activePan?.pointerId === event.pointerId) {
+          event.preventDefault();
+          canvasOffsetX = activePan.offsetX + (event.clientX - activePan.startX);
+          canvasOffsetY = activePan.offsetY + (event.clientY - activePan.startY);
+          applyTransform();
+        }
+      }
+
+      function finishDrawing(event) {
+        if (!activeDrawing || activeDrawing.pointerId !== event.pointerId) return;
+
+        const points = activeDrawing.points.slice();
+        activeDrawing = null;
+        previewGroup.selectAll("*").remove();
+
+        try {
+          const link = createDrawnLink({
+            id: `link-${nextLinkNumber++}`,
+            rawPoints: points,
+            existingLinks: links,
+            snapRadius: centerSnapRadius(),
+            minPointDistance: minDrawPointDistance(),
+            maxPoints: 96,
+          });
+          links.push(link);
+          renderLinks();
+          saveSettings();
+        } catch {
+          renderLinks();
+        }
+      }
+
+      function finishDrag(event) {
+        if (!activeDrag || activeDrag.pointerId !== event.pointerId) return;
+        const link = getLink(activeDrag.linkId);
+        if (link) finishEndpointDrag(link, activeDrag.pointIndex);
+        activeDrag = null;
+        svgElement.classList.remove("dragging");
+        renderLinks();
+        saveSettings();
+      }
+
+      function finishPan(event) {
+        if (!activePan || activePan.pointerId !== event.pointerId) return;
+        activePan = null;
+        svgElement.classList.remove("dragging");
+        saveSettings();
+      }
+
+      function handlePointerUp(event) {
+        finishDrawing(event);
+        finishDrag(event);
+        finishPan(event);
+        try { svgElement.releasePointerCapture(event.pointerId); } catch {}
+      }
+
+      function handlePointerCancel(event) {
+        if (activeDrawing?.pointerId === event.pointerId) {
+          activeDrawing = null;
+          previewGroup.selectAll("*").remove();
+        }
+        if (activeDrag?.pointerId === event.pointerId) {
+          activeDrag = null;
+          svgElement.classList.remove("dragging");
+        }
+        if (activePan?.pointerId === event.pointerId) {
+          activePan = null;
+          svgElement.classList.remove("dragging");
+        }
+      }
+
+      function handleWheel(event) {
+        if (event.target.closest?.('#config-panel, #coordinates, #toggle-panels')) return;
+        event.preventDefault();
+        const delta = event.deltaMode === 1 ? event.deltaY * 24 : event.deltaY;
+        const factor = Math.pow(0.999, delta);
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, canvasScale * factor));
+        if (newScale === canvasScale) return;
+        const pivotX = (event.clientX - canvasOffsetX) / canvasScale;
+        const pivotY = (event.clientY - canvasOffsetY) / canvasScale;
+        canvasOffsetX = event.clientX - pivotX * newScale;
+        canvasOffsetY = event.clientY - pivotY * newScale;
+        canvasScale = newScale;
+        applyTransform();
+        saveSettings();
+      }
+
+      selectModeBtn.addEventListener("click", () => setMode('select'));
+      drawModeBtn.addEventListener("click", () => setMode('draw'));
+      resetBtn.addEventListener("click", () => {
+        localStorage.removeItem(STORAGE_KEY);
+        links = [];
+        nextLinkNumber = 0;
+        canvasScale = 1;
+        canvasOffsetX = 0;
+        canvasOffsetY = 0;
+        activeDrawing = null;
+        activeDrag = null;
+        activePan = null;
+        setMode('draw');
+        renderScene();
+      });
+
+      let panelsVisible = true;
+      toggleButton.addEventListener("click", () => {
+        panelsVisible = !panelsVisible;
+        document.body.classList.toggle("panels-hidden", !panelsVisible);
+        toggleButton.textContent = panelsVisible ? "\u2630" : "\u2715";
+      });
+
+      svgElement.addEventListener("pointerdown", handlePointerDown);
+      svgElement.addEventListener("pointermove", handlePointerMove);
+      svgElement.addEventListener("pointerup", handlePointerUp);
+      svgElement.addEventListener("pointercancel", handlePointerCancel);
+      svgElement.addEventListener("wheel", handleWheel, { passive: false });
+      addEventListener("resize", renderScene);
+
+      window.__drawDemo = {
+        getLinks: () => {
+          const centerLookup = createCenterLookup(links);
+          return links.map(link => applyCenterAnchors(link, centerLookup));
+        },
+        getMode: () => mode,
+        setMode,
+      };
+
+      loadSettings();
+      renderScene();
+      setMode(mode);
+    })();
+  </script>
+</body>
+</html>

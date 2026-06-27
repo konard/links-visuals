@@ -1,0 +1,27 @@
+[
+  {
+    "title": "W3C Pointer Events Level 3",
+    "url": "https://www.w3.org/TR/pointerevents3/",
+    "relevance": "Pointer Events define one event model for mouse, pen, and touch pointers. That makes them the right baseline for Apple Pencil and tablet/stylus hardware."
+  },
+  {
+    "title": "MDN: touch-action",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action",
+    "relevance": "The drawing surface must disable browser gesture handling on the SVG so pen/touch strokes reach the application."
+  },
+  {
+    "title": "D3: d3-drag",
+    "url": "https://d3js.org/d3-drag",
+    "relevance": "The existing repository uses D3 for SVG interaction and rendering, but native Pointer Events are simpler for separating draw mode from select/move mode."
+  },
+  {
+    "title": "perfect-freehand",
+    "url": "https://github.com/steveruizok/perfect-freehand",
+    "relevance": "A specialized freehand stroke library that can convert pressure-aware input into rendered stroke outlines. Useful for drawing apps, but heavier than needed for link-center extraction."
+  },
+  {
+    "title": "Paper.js Path.simplify",
+    "url": "https://paperjs.org/reference/path/#simplify",
+    "relevance": "Paper.js provides path simplification tools. This demo only needs distance-based point reduction, so a small local helper is enough."
+  }
+]
